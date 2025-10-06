@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Fleet Manager Dashboard</title>
+  <style>
+    body { font-family: Arial, sans-serif; background: #f4f6f9; margin: 0; }
+    .navbar { background: #2c3e50; padding: 15px; color: white; display: flex; justify-content: space-between; align-items: center; }
+    .navbar a { color: white; margin: 0 10px; text-decoration: none; font-weight: bold; cursor: pointer; }
+    .navbar a:hover { text-decoration: underline; }
+    .container { padding: 20px; }
+
+    .driver-card { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 0 6px #ccc; margin-bottom: 15px; cursor: pointer; transition: transform 0.2s; }
+    .driver-card:hover { transform: scale(1.03); background: #f9f9f9; }
+
+    .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; }
+    .modal.show { display: flex; }
+    .modal-content { background: white; padding: 20px; border-radius: 8px; width: 480px; max-height: 90vh; overflow-y: auto; }
+    .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+    .close { cursor: pointer; font-size: 22px; font-weight: bold; }
+
+    label { display: block; margin: 8px 0 4px; font-weight: bold; }
+    input, select, textarea { width: 100%; padding: 6px; border: 1px solid #ccc; border-radius: 5px; }
+    input[readonly] { background: #f0f0f0; }
+
+    button { background: #27ae60; color: white; border: none; padding: 8px; border-radius: 5px; cursor: pointer; margin-top: 10px; width: 100%; }
+    button:hover { background: #219150; }
+
+    img { margin-top: 8px; border-radius: 6px; box-shadow: 0 0 5px #aaa; }
+    .approval-info { font-size: 13px; color: #2c3e50; background: #eafaf1; padding: 6px; border-radius: 5px; margin-bottom: 8px; }
+
+    .flash-message { padding: 10px; margin: 10px 0; border-radius: 5px; font-weight: bold; }
+    .flash-success { background: #d4edda; color: #155724; }
+    .flash-danger { background: #f8d7da; color: #721c24; }
+
+    .tab-container { display: flex; flex-wrap: wrap; margin: 10px 0; }
+    .tab-button { background: #bdc3c7; border: none; padding: 10px 20px; margin-right: 5px; border-radius: 5px; cursor: pointer; }
+    .tab-button.active { background: #27ae60; color: white; }
+    .tab-button:hover { background: #219150; color: white; }
+  </style>
+</head>
+<body>
+  <!-- Navbar -->
+  <div class="navbar">
+    <div><strong>Fleet Manager Dashboard</strong></div>
+    <div>
+      <span>{{ current_user.name or current_user.username }} ({{ current_user.role }})</span>
+      <a onclick="openPasswordModal()">Change Password</a>
+      <a href="{{ url_for('auth.logout') }}">Logout</a>
+    </div>
+  </div>
+
+  <!-- Top Tabs: Onboarding / Offboarding -->
+  <div class="tab-container" style="display: ruby-text;">
+    <button class="tab-button active" style="width: 50%;" onclick="showMainTab('onboarding')">Onboarding</button>
+    <button class="tab-button" style="width: 50%;" onclick="showMainTab('offboarding')">Offboarding</button>
+  </div>
+
+  <!-- ========================= ONBOARDING TAB ========================= -->
+  <div id="onboardingTab">
+    <div class="container">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          {% for category, message in messages %}
+            <div class="flash-message flash-{{ category }}">{{ message }}</div>
+          {% endfor %}
+        {% endif %}
+      {% endwith %}
+
+      <h2>Drivers Waiting for Fleet Assignment</h2>
+      {% if onboarding_drivers %}
+        {% for driver in onboarding_drivers %}
+        <div class="driver-card" style="width: 25%;" onclick="openOnboardingModal(this)"
+          data-driver='{{ {
+            "id": driver.id,
+            "full_name": driver.full_name,
+            "iqama_number": driver.iqama_number,
+            "city": driver.city or "",
+            "iqama_card_upload": driver.iqama_card_upload or "",
+            "issued_mobile_number": driver.issued_mobile_number or "",
+            "platform": driver.platform or "",
+            "platform_id": driver.platform_id or "",
+            "ops_manager_approved_at": driver.ops_manager_approved_at.strftime("%Y-%m-%d %H:%M") if driver.ops_manager_approved_at else "",
+            "hr_approved_at": driver.hr_approved_at.strftime("%Y-%m-%d %H:%M") if driver.hr_approved_at else "",
+            "ops_supervisor_approved_at": driver.ops_supervisor_approved_at.strftime("%Y-%m-%d %H:%M") if driver.ops_supervisor_approved_at else ""
+          } | tojson | safe }}'>
+          <h3>{{ driver.full_name }}</h3>
+          <p><strong>Iqama:</strong> {{ driver.iqama_number }}</p>
+          <p><strong>Stage:</strong> {{ driver.onboarding_stage }}</p>
+        </div>
+        {% endfor %}
+      {% else %}
+        <p>No drivers are pending at this stage.</p>
+      {% endif %}
+    </div>
+
+    <!-- Onboarding Modal -->
+    <div id="driverModal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3 id="driverName"></h3>
+          <span class="close" onclick="closeOnboardingModal()">&times;</span>
+        </div>
+
+        <div id="driverDetails"></div>
+
+        <form id="fleetOnboardingForm" method="POST" enctype="multipart/form-data">
+          <h4>Fleet Manager Action</h4>
+
+          <label>Assign Vehicle Plate Number</label>
+          <input type="text" name="vehicle_plate" placeholder="Enter Plate Number" required>
+
+          <label>Vehicle Details</label>
+          <input type="text" name="vehicle_details" placeholder="Enter Model / Color / Type" required>
+
+          <label>Assignment Date</label>
+          <input type="date" name="assignment_date"  required>
+
+          <label>Upload TAMM Authorization Screenshot (Required)</label>
+          <input type="file" name="tamm_authorization_ss" accept=".png,.jpg,.jpeg,.pdf" required>
+
+          <label><input type="checkbox" name="tamm_authorized" value="1" required> ✅ TAMM Authorization Issued</label>
+
+          <button type="submit">✅ Assign Vehicle & Send to Finance</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================= OFFBOARDING TAB ========================= -->
+  <div id="offboardingTab" style="display:none;">
+    <div class="tab-container" style="display: ruby-text;">
+      <button class="tab-button active" style="width: 50%;" onclick="showOffboardingTab('fleet')">Fleet Assessment & Vehicle</button>
+      <button class="tab-button" style="width: 50%;" onclick="showOffboardingTab('tamm')">TAMM Revocation</button>
+    </div>
+
+    <!-- ================= FLEET ASSESSMENT ================= -->
+    <div id="fleetOffboardingTab">
+      <div class="container">
+        <h3>Fleet Clearance Requests</h3>
+        {% for record in offboarding_requests if record.status == "Fleet" %}
+          <div class="driver-card" 
+               data-offboarding-id="{{ record.id }}"
+               data-driver-name="{{ record.driver.full_name }}"
+               data-iqama="{{ record.driver.iqama_number }}"
+               data-requested="{{ record.requested_at.strftime('%Y-%m-%d %H:%M') }}"
+               onclick="openFleetModal(this)">
+            <h3>{{ record.driver.full_name }}</h3>
+            <p><strong>Iqama:</strong> {{ record.driver.iqama_number }}</p>
+            <p><strong>Requested At:</strong> {{ record.requested_at.strftime('%Y-%m-%d %H:%M') }}</p>
+            <p><strong>Platform:</strong> {{ record.driver.platform }} ({{ record.driver.platform_id }})</p>
+          </div>
+        {% else %}
+          <p>No fleet clearance requests.</p>
+        {% endfor %}
+      </div>
+
+      <!-- Fleet Modal -->
+      <div id="fleetModal" class="modal">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h3 id="fleetModalTitle">Fleet Clearance</h3>
+            <span class="close" onclick="closeFleetModal()">&times;</span>
+          </div>
+          <form id="fleetForm">
+            <input type="hidden" id="fleetOffboardingId">
+
+            <label><input type="checkbox" id="carReturned"> Car Returned</label><br>
+            <label>Damage Assessment:</label>
+            <textarea id="fleetDamageReport" style="width:100%;"></textarea><br>
+            <label>Damage Cost (SAR):</label>
+            <input type="number" id="fleetDamageCost" step="0.01" style="width:100%;"><br>
+
+            <button type="submit">✅ Submit & Send to Finance</button>
+            <button type="button" onclick="closeFleetModal()">Cancel</button>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================= TAMM REVOCATION ================= -->
+    <div id="tammOffboardingTab" style="display:none;">
+      <div class="container">
+        <h3>TAMM Revocation Requests</h3>
+        {% for record in offboarding_requests if record.status == "pending_tamm" %}
+          <div class="driver-card" 
+               data-offboarding-id="{{ record.id }}"
+               data-driver-name="{{ record.driver.full_name }}"
+               onclick="openTammModal(this)">
+            <h3>{{ record.driver.full_name }}</h3>
+            <p><strong>Iqama:</strong> {{ record.driver.iqama_number }}</p>
+            <p><strong>Requested At:</strong> {{ record.requested_at.strftime('%Y-%m-%d %H:%M') }}</p>
+          </div>
+        {% else %}
+          <p>No TAMM revocation requests.</p>
+        {% endfor %}
+      </div>
+
+      <!-- TAMM Modal -->
+      <div id="tammModal" class="modal">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h3 id="tammModalTitle">TAMM Revocation</h3>
+            <span class="close" onclick="closeTammModal()">&times;</span>
+          </div>
+          <form id="tammForm">
+            <input type="hidden" id="tammOffboardingId">
+
+            <label><input type="checkbox" id="tammRevoked" value="1"> ⚠️ TAMM Revoked / Mark Driver Fully Offboarded</label><br>
+            <button type="submit">✅ Submit</button>
+            <button type="button" onclick="closeTammModal()">Cancel</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= PASSWORD MODAL ================= -->
+  <div id="passwordModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Change Password</h3>
+        <span class="close" onclick="closePasswordModal()">&times;</span>
+      </div>
+      <form method="POST" action="{{ url_for('fleet.change_password') }}">
+        <input type="password" name="current_password" placeholder="Current Password" required>
+        <input type="password" name="new_password" placeholder="New Password" required>
+        <input type="password" name="confirm_password" placeholder="Confirm Password" required>
+        <button type="submit">Update Password</button>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    // ================= MAIN TAB SWITCH =================
+    function showMainTab(tab) {
+      document.getElementById("onboardingTab").style.display = tab === "onboarding" ? "block" : "none";
+      document.getElementById("offboardingTab").style.display = tab === "offboarding" ? "block" : "none";
+      document.querySelectorAll(".tab-container > .tab-button").forEach(btn => btn.classList.remove("active"));
+      event.target.classList.add("active");
+    }
+
+    // ================= OFFBOARDING SUBTAB SWITCH =================
+    function showOffboardingTab(tab) {
+      document.getElementById("fleetOffboardingTab").style.display = tab === "fleet" ? "block" : "none";
+      document.getElementById("tammOffboardingTab").style.display = tab === "tamm" ? "block" : "none";
+      const buttons = document.querySelectorAll("#offboardingTab .tab-button");
+      buttons.forEach(b => b.classList.remove("active"));
+      event.target.classList.add("active");
+    }
+
+    // ================= ONBOARDING MODAL =================
+    function openOnboardingModal(card) {
+      const d = JSON.parse(card.dataset.driver);
+      document.getElementById("driverName").innerText = "Assign Vehicle for: " + d.full_name;
+
+      let html = `
+        <div class="approval-info"><strong>Ops Manager Approved:</strong> ${d.ops_manager_approved_at || "❌ Not Approved"}</div>
+        <div class="approval-info"><strong>HR Approved:</strong> ${d.hr_approved_at || "❌ Not Approved"}</div>
+        <div class="approval-info"><strong>Ops Supervisor Approved:</strong> ${d.ops_supervisor_approved_at || "❌ Not Approved"}</div>
+        <p><strong>Iqama:</strong> ${d.iqama_number}</p>
+        <p><strong>City:</strong> ${d.city || "N/A"}</p>
+        <p><strong>Issued Mobile:</strong> ${d.issued_mobile_number || "N/A"}</p>
+        <p><strong>Platform:</strong> ${d.platform || "N/A"} (${d.platform_id || "N/A"})</p>`;
+      if (d.iqama_card_upload) {
+        html += `<p><img src="/static/uploads/${d.iqama_card_upload}" width="300"></p>`;
+      }
+      document.getElementById("driverDetails").innerHTML = html;
+
+      document.getElementById("fleetOnboardingForm").action = `/dashboard/fleet/assign_vehicle/${d.id}`;
+      document.getElementById("driverModal").classList.add("show");
+    }
+    function closeOnboardingModal() { document.getElementById("driverModal").classList.remove("show"); }
+
+    // ================= FLEET MODAL =================
+    let currentFleetId = null;
+    function openFleetModal(card) {
+      currentFleetId = card.dataset.offboardingId;
+      document.getElementById("fleetOffboardingId").value = currentFleetId;
+      document.getElementById("fleetModal").classList.add("show");
+    }
+    function closeFleetModal() { document.getElementById("fleetModal").classList.remove("show"); currentFleetId=null; }
+
+    document.getElementById("fleetForm").addEventListener("submit", async function(e){
+      e.preventDefault();
+      if(!confirm("Confirm fleet clearance?")) return;
+      const payload = {
+        car_returned: document.getElementById("carReturned").checked,
+        fleet_damage_report: document.getElementById("fleetDamageReport").value,
+        fleet_damage_cost: document.getElementById("fleetDamageCost").value
+      };
+      try{
+        const res = await fetch(`/dashboard/fleet/api/clear_offboarding/${currentFleetId}`,{
+          method:"POST",
+          headers: {"Content-Type":"application/json"},
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if(data.success){ alert("Fleet clearance submitted ✅"); location.reload(); }
+        else alert(data.message || "Failed");
+      }catch(err){ console.error(err); alert("Server error"); }
+    });
+
+    // ================= TAMM MODAL =================
+    let currentTammId = null;
+    function openTammModal(card){
+      currentTammId = card.dataset.offboardingId;
+      document.getElementById("tammOffboardingId").value = currentTammId;
+      document.getElementById("tammModal").classList.add("show");
+    }
+    function closeTammModal(){ document.getElementById("tammModal").classList.remove("show"); currentTammId=null; }
+
+    document.getElementById("tammForm").addEventListener("submit", async function(e){
+      e.preventDefault();
+      if(!confirm("Confirm TAMM revocation & full offboarding?")) return;
+      const payload = { tamm_revoked: document.getElementById("tammRevoked").checked };
+      try{
+        const res = await fetch(`/dashboard/fleet/api/revoke_tamm/${currentTammId}`,{
+          method:"POST",
+          headers: {"Content-Type":"application/json"},
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if(data.success){ alert("Driver fully offboarded ✅"); location.reload(); }
+        else alert(data.message || "Failed");
+      }catch(err){ console.error(err); alert("Server error"); }
+    });
+
+    // ================= PASSWORD MODAL =================
+    function openPasswordModal() { document.getElementById("passwordModal").classList.add("show"); }
+    function closePasswordModal() { document.getElementById("passwordModal").classList.remove("show"); }
+
+    window.onclick = function(event){
+      if(event.target.classList.contains("modal")){
+        closeOnboardingModal();
+        closeFleetModal();
+        closeTammModal();
+        closePasswordModal();
+      }
+    }
+  </script>
+</body>
+</html>

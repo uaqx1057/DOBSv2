@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Ops Supervisor Dashboard</title>
+  <style>
+    body { font-family: Arial, sans-serif; background: #f4f6f9; margin: 0; }
+    .navbar { background: #2c3e50; padding: 15px; color: white; display: flex; justify-content: space-between; align-items: center; }
+    .navbar a { color: white; margin: 0 10px; text-decoration: none; font-weight: bold; cursor: pointer; }
+    .container { padding: 20px; }
+
+    h2 { margin-top: 10px; color: #2c3e50; }
+
+    .driver-card {
+      background: white;
+      padding: 15px;
+      border-radius: 8px;
+      box-shadow: 0 0 6px #ccc;
+      margin-bottom: 12px;
+      cursor: pointer;
+      transition: transform 0.2s;
+    }
+    .driver-card:hover { transform: scale(1.02); background: #fbfbfb; }
+
+    /* Modal Styling */
+    .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.5); justify-content: center; align-items: center; z-index: 999; }
+    .modal.show { display: flex; }
+    .modal-content {
+      background: white;
+      padding: 20px;
+      border-radius: 10px;
+      width: 500px;
+      max-height: 90vh;
+      overflow-y: auto;
+      box-shadow: 0 6px 30px rgba(0,0,0,0.3);
+    }
+    .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+    .close { cursor: pointer; font-size: 22px; font-weight: bold; }
+
+    label { display: block; margin: 8px 0 4px; font-weight: bold; font-size: 14px; }
+    input, select { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 5px; }
+    input[readonly] { background: #f0f0f0; }
+
+    button {
+      background: #27ae60;
+      color: white;
+      border: none;
+      padding: 10px;
+      border-radius: 6px;
+      margin-top: 10px;
+      width: 100%;
+      opacity: 0.6;
+      cursor: not-allowed;
+      font-weight: bold;
+    }
+    button.enabled { opacity: 1; cursor: pointer; }
+
+    img.driver-iqama { max-width: 100%; margin-top: 8px; border-radius: 6px; box-shadow: 0 0 5px #aaa; }
+
+    .approval-info {
+      font-size: 13px;
+      color: #2c3e50;
+      background: #eafaf1;
+      padding: 6px;
+      border-radius: 5px;
+      margin-bottom: 8px;
+    }
+  </style>
+</head>
+<body>
+  <!-- Navbar -->
+  <div class="navbar">
+    <div><strong>Ops Supervisor Dashboard</strong></div>
+    <div>
+      <span>{{ current_user.name or current_user.username }} ({{ current_user.role }})</span>
+      <a onclick="openPasswordModal()">Change Password</a>
+      <a href="{{ url_for('auth.logout') }}">Logout</a>
+    </div>
+  </div>
+
+  <div class="tab-container" style="display: flex;">
+    <button style="margin: 10px;" class="tab-button active" onclick="showTab('onboarding')">Onboarding</button>
+    <button style="margin: 10px;" class="tab-button" onclick="showTab('offboarding')">Offboarding</button>
+  </div>
+
+
+
+<div id="onboardingTab"> 
+  <div class="container">
+    <h2>Drivers Waiting for Ops Supervisor Processing</h2>
+      {% if onboarding_drivers %}
+        {% for driver in onboarding_drivers %}
+          <div class="driver-card" style="width: 25%;" onclick="openModal(this)"
+            data-driver='{{ {
+              "id": driver.id,
+              "full_name": driver.full_name,
+              "iqama_number": driver.iqama_number,
+              "iqama_expiry_date": driver.iqama_expiry_date.strftime("%Y-%m-%d") if driver.iqama_expiry_date else "",
+              "nationality": driver.nationality or "",
+              "mobile_number": driver.mobile_number or "",
+              "previous_sponsor_number": driver.previous_sponsor_number or "",
+              "saudi_driving_license": driver.saudi_driving_license,
+              "city": driver.city or "",
+              "platform": driver.platform or "",
+              "platform_id": driver.platform_id or "",
+              "issued_mobile_number": driver.issued_mobile_number or "",
+              "issued_device_id": driver.issued_device_id or "",
+              "mobile_issued": driver.mobile_issued or false,
+              "iqama_card_upload": driver.iqama_card_upload or "",
+              "ops_manager_approved_at": driver.ops_manager_approved_at.strftime("%Y-%m-%d %H:%M") if driver.ops_manager_approved_at else "",
+              "hr_approved_at": driver.hr_approved_at.strftime("%Y-%m-%d %H:%M") if driver.hr_approved_at else ""
+            } | tojson | safe }}'>
+            <h3>{{ driver.full_name }}</h3>
+            <p><strong>Iqama:</strong> {{ driver.iqama_number }}</p>
+            <p><strong>Stage:</strong> {{ driver.onboarding_stage }}</p>
+          </div>
+        {% endfor %}
+      {% else %}
+        <p>No drivers are pending at this stage.</p>
+      {% endif %}
+  </div>
+  <!-- Driver Details Modal -->
+  <div id="driverModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="driverName">Driver Details</h3>
+        <span class="close" onclick="closeModal()">&times;</span>
+      </div>
+
+      <div id="driverDetails"></div>
+
+      <form id="opsForm" method="POST" action="#">
+        <h4>Ops Supervisor Action</h4>
+
+        <label>Platform</label>
+        <select id="platform" name="platform" required>
+          <option value="">-- Select Platform --</option>
+          <option>Jahez</option>
+          <option>HungerStation</option>
+          <option>Keeta</option>
+          <option>ToYou</option>
+          <option>Ninja</option>
+        </select>
+
+        <label>Platform ID</label>
+        <input type="text" id="platform_id" name="platform_id" placeholder="Enter Platform ID" required>
+
+        <label>Issued Company Mobile Number</label>
+        <input type="text" id="issued_mobile_number" name="issued_mobile_number" placeholder="Enter Issued Mobile Number" required>
+
+        <label>Issued Device ID / IMEI</label>
+        <input type="text" id="issued_device_id" name="issued_device_id" placeholder="Enter Device IMEI/Serial" required>
+
+        <label>
+          <input type="checkbox" id="mobile_issued" name="mobile_issued" required>
+          Mobile & SIM Issued
+        </label>
+
+        <button type="submit" id="approveBtn" disabled>✅ Approve & Send to Fleet Manager</button>
+      </form>
+
+
+    
+    </div>
+  </div>
+  <script>
+    function openModal(card) {
+      const d = JSON.parse(card.dataset.driver);
+      document.getElementById("driverName").innerText = "Processing: " + d.full_name;
+
+      let html = `
+        <div class="approval-info"><strong>Ops Manager Approved:</strong> ${d.ops_manager_approved_at || "❌ Not Approved"}</div>
+        <div class="approval-info"><strong>HR Approved:</strong> ${d.hr_approved_at || "❌ Not Approved"}</div>
+        <p><strong>Iqama Number:</strong> ${d.iqama_number}</p>
+        <p><strong>Iqama Expiry:</strong> ${d.iqama_expiry_date || "N/A"}</p>
+        <p><strong>Nationality:</strong> ${d.nationality || "N/A"}</p>
+        <p><strong>Previous Sponsor:</strong> ${d.previous_sponsor_number || "N/A"}</p>
+        <p><strong>Driver's Mobile:</strong> ${d.mobile_number || "N/A"}</p>
+        <p><strong>City:</strong> ${d.city || "N/A"}</p>`;
+      if (d.iqama_card_upload) {
+        html += `<p><img src="/static/uploads/${d.iqama_card_upload}" class="driver-iqama"></p>`;
+      }
+      document.getElementById("driverDetails").innerHTML = html;
+
+      // Prefill form fields
+      document.getElementById("opsForm").action = `/dashboard/ops_supervisor/approve_driver/${d.id}`;
+      document.getElementById("platform").value = d.platform || "";
+      document.getElementById("platform_id").value = d.platform_id || "";
+      document.getElementById("issued_mobile_number").value = d.issued_mobile_number || "";
+      document.getElementById("issued_device_id").value = d.issued_device_id || "";
+      document.getElementById("mobile_issued").checked = !!d.mobile_issued;
+
+      validateForm(); // run initial validation
+      document.getElementById("driverModal").classList.add("show");
+    }
+
+    function closeModal() { document.getElementById("driverModal").classList.remove("show"); }
+
+    document.querySelectorAll("#platform, #platform_id, #issued_mobile_number, #issued_device_id, #mobile_issued")
+      .forEach(el => el.addEventListener("input", validateForm));
+
+    function validateForm() {
+      const platform = document.getElementById("platform").value.trim();
+      const platformId = document.getElementById("platform_id").value.trim();
+      const issuedMobile = document.getElementById("issued_mobile_number").value.trim();
+      const issuedDevice = document.getElementById("issued_device_id").value.trim();
+      const mobileIssued = document.getElementById("mobile_issued").checked;
+      const approveBtn = document.getElementById("approveBtn");
+
+      if (platform && platformId && issuedMobile && issuedDevice && mobileIssued) {
+        approveBtn.disabled = false;
+        approveBtn.classList.add("enabled");
+      } else {
+        approveBtn.disabled = true;
+        approveBtn.classList.remove("enabled");
+      }
+    }
+  </script>
+
+</div> 
+
+<div id="offboardingTab" style="display:none;">
+  <div class="container">
+    <h2>Drivers to Offboard</h2>
+
+    <!-- Search Box -->
+    <div class="search-box" style="margin-bottom: 12px;">
+      <input type="text" id="offboardingSearch" placeholder="Search driver by name or Iqama..." 
+             oninput="filterOffboardingDrivers()" 
+             style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #ccc;">
+    </div>
+
+    <div class="driver-cards" style="width: 25%;" id="offboardingRequests">
+      {% for record in offboarding_requests %}
+        <div class="driver-card offboarding-card" 
+             data-offboarding-id="{{ record.id }}"
+             data-driver-name="{{ record.driver.full_name }}"
+             data-iqama="{{ record.driver.iqama_number }}"
+             data-requested="{{ record.requested_at.strftime('%Y-%m-%d %H:%M') }}"
+             data-platform="{{ record.driver.platform }}"
+             data-platform-id="{{ record.driver.platform_id }}"
+             onclick="openOffboardingModal(this)">
+          <h3>{{ record.driver.full_name }}</h3>
+          <p><strong>Iqama:</strong> {{ record.driver.iqama_number }}</p>
+          <p><strong>Requested At:</strong> {{ record.requested_at.strftime('%Y-%m-%d %H:%M') }}</p>
+          <p><strong>Platform:</strong> {{ record.driver.platform }} ({{ record.driver.platform_id }})</p>
+        </div>
+      {% else %}
+        <p>No offboarding requests at this stage.</p>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Modal -->
+  <div id="offboardingModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="modalTitle">Offboarding Clearance</h3>
+        <span class="close" onclick="closeOffboardingModal()">&times;</span>
+      </div>
+
+      <form id="offboardingForm">
+        <div class="grid">
+          <div>
+            <p><strong>Driver:</strong> <span id="m_driver_name"></span></p>
+            <p><strong>Iqama:</strong> <span id="m_iqama"></span></p>
+            <p><strong>Requested:</strong> <span id="m_requested"></span></p>
+            <p><strong>Platform:</strong> <span id="m_platform"></span> (<span id="m_platform_id"></span>)</p>
+          </div>
+
+          <div>
+            <label><input type="checkbox" name="company_mobile_returned"> Company Mobile Returned</label><br>
+            <label><input type="checkbox" name="company_sim_returned"> Company SIM Returned</label><br>
+            <label><input type="checkbox" name="platform_returned"> Platform Account Returned</label><br>
+
+            <textarea name="ops_supervisor_note" placeholder="Add notes..." style="width:100%;margin-top:6px;"></textarea>
+          </div>
+        </div>
+
+        <div style="margin-top:12px; display:flex; gap:10px;">
+          <button type="submit" style="width: 250%;" class="btn primary" style="flex:1;">✅ Confirm & Send to Fleet</button>
+          <button type="button" style="background: #f90808;" class="btn secondary" onclick="closeOffboardingModal()">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+<script>
+let currentOffboardingId = null;
+
+function openOffboardingModal(card) {
+  currentOffboardingId = card.dataset.offboardingId;
+  document.getElementById("modalTitle").innerText = "Offboarding — " + card.dataset.driverName;
+
+  document.getElementById("m_driver_name").innerText = card.dataset.driverName;
+  document.getElementById("m_iqama").innerText = card.dataset.iqama;
+  document.getElementById("m_requested").innerText = card.dataset.requested;
+  document.getElementById("m_platform").innerText = card.dataset.platform;
+  document.getElementById("m_platform_id").innerText = card.dataset.platformId;
+
+  document.getElementById("offboardingModal").classList.add("show");
+}
+
+function closeOffboardingModal() {
+  document.getElementById("offboardingModal").classList.remove("show");
+  currentOffboardingId = null;
+}
+
+document.getElementById("offboardingForm").addEventListener("submit", async function(e) {
+  e.preventDefault();
+
+  if (!confirm("Confirm clearance and send to Fleet Manager?")) return;
+
+  const formData = new FormData(this);
+  const payload = Object.fromEntries(formData.entries());
+  payload.company_mobile_returned = formData.has("company_mobile_returned");
+  payload.company_sim_returned = formData.has("company_sim_returned");
+  payload.platform_returned = formData.has("platform_returned");
+
+  try {
+    const res = await fetch(`/dashboard/ops_supervisor/api/clear_offboarding/${currentOffboardingId}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+
+    const data = await res.json();
+    if (data.success) {
+      alert("Cleared and sent to Fleet ✅");
+      location.reload();
+    } else {
+      alert(data.message || "Failed to clear offboarding.");
+    }
+  } catch (err) {
+    console.error(err);
+    alert("Server error. Please try again.");
+  }
+});
+
+// Close modal when clicking outside
+window.addEventListener("click", e => {
+  if (e.target.classList.contains("modal")) closeOffboardingModal();
+});
+</script>
+
+
+</div>
+
+
+
+<script>
+function showTab(tab) {
+  document.getElementById("onboardingTab").style.display = tab === "onboarding" ? "block" : "none";
+  document.getElementById("offboardingTab").style.display = tab === "offboarding" ? "block" : "none";
+
+  document.querySelectorAll(".tab-button").forEach(btn => btn.classList.remove("active"));
+  event.target.classList.add("active");
+}
+</script>
+
+
+</body>
+</html>

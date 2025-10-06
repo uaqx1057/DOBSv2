@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Driver Registration</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <style>
+        form {
+            max-width: 500px;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        label {
+            font-weight: bold;
+            margin-top: 8px;
+        }
+        input, select, button {
+            padding: 8px;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+        }
+        button {
+            background-color: #27ae60;
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        button:hover {
+            background-color: #219150;
+        }
+        .flash-message {
+            padding: 12px;
+            margin: 10px 0;
+            border-radius: 5px;
+            font-weight: bold;
+            text-align: center;
+            color: #fff;
+        }
+        .flash-message.success { background-color: #27ae60; }
+        .flash-message.error { background-color: #e74c3c; }
+        .flash-message.info { background-color: #3498db; }
+    </style>
+</head>
+<body>
+    <h1 style="text-align:center;">Driver Registration</h1>
+
+    <!-- ✅ Flash Messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div id="flash-messages">
+          {% for category, message in messages %}
+            <div class="flash-message {{ category }}">
+              {{ message }}
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    <form action="{{ url_for('public.register') }}" method="POST" enctype="multipart/form-data">
+        <label for="full_name">Full Name:</label>
+        <input type="text" id="full_name" name="full_name" required>
+        
+        <label for="iqama_number">Iqama Number:</label>
+        <input type="text" id="iqama_number" name="iqama_number" required>
+        
+        <label for="iqama_expiry_date">Iqama Expiry Date:</label>
+        <input type="date" id="iqama_expiry_date" name="iqama_expiry_date" required>
+        
+        <label for="saudi_driving_license">Saudi Driving License Available:</label>
+        <select name="saudi_driving_license" id="saudi_driving_license" required>
+            <option value="">-- Select --</option>
+            <option value="yes">Yes</option>
+            <option value="no">No</option>
+        </select>
+
+        <label for="nationality">Nationality:</label>
+        <input type="text" id="nationality" name="nationality" required>
+
+        <label for="city">City:</label>
+        <select id="city" name="city" required>
+            <option value="">-- Select City --</option>
+            <option value="Riyadh">Riyadh</option>
+            <option value="Jeddah">Jeddah</option>
+            <option value="Dammam">Dammam</option>
+            <option value="Khobar">Khobar</option>
+            <option value="Makkah">Makkah</option>
+            <option value="Madinah">Madinah</option>
+            <option value="Abha">Abha</option>
+            <option value="Tabuk">Tabuk</option>
+            <option value="Al-Ahsa">Al-Ahsa</option>
+            <option value="Other">Other</option>
+        </select>
+        
+        <label for="mobile_number">Mobile Number:</label>
+        <input type="text" id="mobile_number" name="mobile_number" required>
+        
+        <label for="previous_sponsor_number">Total Sponsorship transfers:</label>
+        <input type="text" id="previous_sponsor_number" name="previous_sponsor_number" required>
+        
+        <label for="iqama_card_upload">Upload Iqama Card:</label>
+        <input type="file" id="iqama_card_upload" name="iqama_card_upload" accept=".png,.jpg,.jpeg,.pdf" required>
+        
+        <button type="submit">Register</button>
+    </form>
+
+    <script>
+      // ✅ Auto-hide flash after 4 seconds
+      setTimeout(() => {
+        const flash = document.getElementById("flash-messages");
+        if (flash) {
+          flash.style.transition = "opacity 0.5s ease";
+          flash.style.opacity = "0";
+          setTimeout(() => flash.remove(), 500);
+        }
+      }, 4000);
+    </script>
+</body>
+</html>

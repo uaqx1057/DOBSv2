@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Ops Manager — Dashboard</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; background: #f4f6f9; color:#222; }
+    .navbar { background:#2c3e50; color:#fff; padding:12px 18px; display:flex; justify-content:space-between; align-items:center; }
+    .navbar a { color:#fff; text-decoration:none; margin-left:12px; cursor:pointer; font-weight:600; }
+    .container { padding:18px; max-width:1200px; margin:0 auto; }
+    h2 { color:#2c3e50; margin:4px 0 12px; }
+
+    .driver-grid { display:flex; flex-wrap:wrap; gap:14px; }
+    .driver-card { width:260px; background:#fff; border-radius:8px; padding:12px; box-shadow:0 2px 10px rgba(0,0,0,0.06); cursor:pointer; transition:transform .12s; }
+    .driver-card:hover { transform:translateY(-3px); }
+    .driver-card h3 { margin:0 0 6px; font-size:16px; color:#2c3e50; }
+    .driver-card p { margin:6px 0; font-size:13px; color:#555; }
+
+    .modal { display:none; position:fixed; inset:0; background:rgba(0,0,0,.45); align-items:center; justify-content:center; padding:20px; }
+    .modal.show { display:flex; }
+    .modal-content { background:#fff; width:760px; max-width:100%; border-radius:8px; padding:18px; box-shadow:0 8px 40px rgba(0,0,0,0.2); max-height:90vh; overflow:auto; }
+    .modal-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
+    .close { font-size:22px; cursor:pointer; }
+
+    .grid { display:grid; grid-template-columns: 1fr 1fr; gap:10px; }
+    label { font-size:13px; color:#333; font-weight:700; margin-bottom:4px; display:block; }
+    .value { font-size:14px; color:#111; margin-bottom:8px; }
+    .full-row { grid-column: 1 / -1; }
+
+    .approve-note { width:100%; padding:8px; border-radius:6px; border:1px solid #ccc; box-sizing:border-box; }
+
+    .btn { background:#27ae60; color:#fff; border:none; padding:10px 12px; border-radius:6px; cursor:pointer; font-weight:700; }
+    .btn.secondary { background:#2980b9; }
+    .flash { padding:10px; border-radius:6px; margin:10px 0; }
+    .flash.success { background:#d4edda; color:#155724; }
+    .flash.warning { background:#fff3cd; color:#856404; }
+    .flash.danger { background:#f8d7da; color:#721c24; }
+
+    .small { font-size:13px; color:#666; }
+
+    img.upload-thumb { max-width:100%; border-radius:6px; margin-top:6px; box-shadow:0 3px 10px rgba(0,0,0,0.08); }
+    .meta { font-size:12px; color:#444; }
+  </style>
+</head>
+<body>
+  <div class="navbar">
+    <div><strong>Ops Manager Dashboard</strong></div>
+    <div>
+      <span class="small">{{ current_user.name or current_user.username }} ({{ current_user.role }})</span>
+      <a onclick="openModalById('passwordModal')">Change Password</a>
+      <a href="{{ url_for('auth.logout') }}">Logout</a>
+    </div>
+  </div>
+
+
+<div class="tab-container" style="display: flex;">
+    <button style="margin: 10px;" class="tab-button active" onclick="showTab('onboarding')">Onboarding</button>
+    <button style="margin: 10px;" class="tab-button" onclick="showTab('offboarding')">Offboarding</button>
+</div>
+
+<div id="onboardingTab">
+    <div class="container">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="flash {{ category }}">{{ message }}</div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    <h2>Drivers assigned to Ops Manager</h2>
+
+    {% if drivers %}
+      <div class="driver-grid">
+        {% for driver in drivers %}
+          <div class="driver-card" onclick="openDriverModal(this)"
+               data-driver='{{ {
+                 "id": driver.id,
+                 "full_name": driver.full_name,
+                 "iqama_number": driver.iqama_number,
+                 "iqama_expiry_date": driver.iqama_expiry_date.strftime("%Y-%m-%d") if driver.iqama_expiry_date else "",
+                 "nationality": driver.nationality or "",
+                 "mobile_number": driver.mobile_number or "",
+                 "previous_sponsor_number": driver.previous_sponsor_number or "",
+                 "saudi_driving_license": driver.saudi_driving_license if driver.saudi_driving_license is not none else false,
+                 "iqama_card_upload": driver.iqama_card_upload or "",
+                 "platform": driver.platform or "",
+                 "city": driver.city or "",
+                 "car_details": driver.car_details or "",
+                 "assignment_date": driver.assignment_date.strftime("%Y-%m-%d") if driver.assignment_date else "",
+                 "ops_manager_approved": driver.ops_manager_approved if driver.ops_manager_approved is not none else false,
+                 "ops_manager_approved_at": driver.ops_manager_approved_at.strftime("%Y-%m-%d %H:%M") if driver.ops_manager_approved_at else "",
+               } | tojson | safe }}'>
+            <h3>{{ driver.full_name }}</h3>
+            <p><strong>Iqama:</strong> {{ driver.iqama_number }}</p>
+            <p class="small"><strong>City:</strong> {{ driver.city or "N/A" }}</p>
+            <p class="small"><strong>Stage:</strong> {{ driver.onboarding_stage }}</p>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p>No drivers waiting at this stage.</p>
+    {% endif %}
+  </div>
+
+  <!-- Driver Detail Modal -->
+  <div id="driverModal" class="modal" aria-hidden="true">
+    <div class="modal-content" role="dialog" aria-modal="true">
+      <div class="modal-header">
+        <h3 id="modalTitle">Driver details</h3>
+        <span class="close" onclick="closeDriverModal()">&times;</span>
+      </div>
+
+      <div id="modalBody">
+        <form id="approveForm" method="POST" style="margin:0;">
+          <div class="grid">
+            <div>
+              <label>Full name</label>
+              <div class="value" id="d_full_name">—</div>
+
+              <label>Iqama Number</label>
+              <div class="value" id="d_iqama">—</div>
+
+              <label>Iqama Expiry</label>
+              <div class="value" id="d_iqama_expiry">—</div>
+
+              <label>Nationality</label>
+              <div class="value" id="d_nationality">—</div>
+
+              <label>Personal Mobile</label>
+              <div class="value" id="d_mobile">—</div>
+
+              <label>Previous Sponsor</label>
+              <div class="value" id="d_prev_sponsor">—</div>
+
+              <label>Driving License</label>
+              <div class="value" id="d_license">—</div>
+            </div>
+
+            <div>
+              <label>City</label>
+              <div class="value" id="d_city">—</div>
+
+              <label>Platform</label>
+              <div class="value" id="d_platform">—</div>
+
+              <label>Assigned Vehicle</label>
+              <div class="value" id="d_car">—</div>
+
+              <label>Assignment Date</label>
+              <div class="value" id="d_assignment">—</div>
+
+              <label>Ops Manager approved at</label>
+              <div class="value" id="d_ops_at">—</div>
+
+              <label>Note (ops manager)</label>
+              <textarea class="approve-note" id="d_ops_note" name="ops_note" placeholder="Optional note to HR (visible to HR)"></textarea>
+            </div>
+
+            <div class="full-row">
+              <label>Iqama / ID picture</label>
+              <div id="d_iqama_img" class="value"></div>
+            </div>
+          </div>
+
+          <input type="hidden" id="approveAction" name="action" value="approve">
+          <div style="margin-top:12px; display:flex; gap:10px; align-items:center;">
+            <button type="submit" class="btn" id="approveBtn" onclick="return confirmApprove()">✅ Approve & Send to HR</button>
+            <button type="button" class="btn secondary" onclick="closeDriverModal()">Close</button>
+            <div style="flex:1"></div>
+            <div class="small">Stage: <span id="d_stage">—</span></div>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Password Modal -->
+  <div id="passwordModal" class="modal" aria-hidden="true">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Change Password</h3>
+        <span class="close" onclick="openModalById('passwordModal')">&times;</span>
+      </div>
+      <form method="POST" action="{{ url_for('ops_manager.change_password') }}">
+        <div style="display:grid; gap:8px;">
+          <input type="password" name="current_password" placeholder="Current password" required>
+          <input type="password" name="new_password" placeholder="New password" required>
+          <input type="password" name="confirm_password" placeholder="Confirm new password" required>
+          <div style="display:flex; gap:8px; margin-top:8px;">
+            <button type="submit" class="btn">Update Password</button>
+            <button type="button" class="btn secondary" onclick="openModalById('passwordModal')">Cancel</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    // Utility: safe JSON parse (handles undefined)
+    function safeParse(s) {
+      try { return JSON.parse(s); } catch(e) { return {}; }
+    }
+
+    function openDriverModal(card) {
+      const d = safeParse(card.dataset.driver);
+      document.getElementById("modalTitle").innerText = d.full_name || "Driver details";
+      document.getElementById("d_full_name").innerText = d.full_name || "—";
+      document.getElementById("d_iqama").innerText = d.iqama_number || "—";
+      document.getElementById("d_iqama_expiry").innerText = d.iqama_expiry_date || "—";
+      document.getElementById("d_nationality").innerText = d.nationality || "—";
+      document.getElementById("d_mobile").innerText = d.mobile_number || "—";
+      document.getElementById("d_prev_sponsor").innerText = d.previous_sponsor_number || "—";
+      document.getElementById("d_license").innerText = d.saudi_driving_license ? "✅ Yes" : "❌ No";
+      document.getElementById("d_city").innerText = d.city || "—";
+      document.getElementById("d_platform").innerText = d.platform || "—";
+      document.getElementById("d_car").innerText = d.car_details || "—";
+      document.getElementById("d_assignment").innerText = d.assignment_date || "—";
+      document.getElementById("d_ops_at").innerText = d.ops_manager_approved_at || "—";
+      document.getElementById("d_stage").innerText = d.onboarding_stage || "—";
+
+      // set optional note
+      document.getElementById("d_ops_note").value = "";
+
+      // iqama image
+      const imgHolder = document.getElementById("d_iqama_img");
+      imgHolder.innerHTML = "";
+      if (d.iqama_card_upload) {
+        const img = document.createElement("img");
+        img.src = `/static/uploads/${d.iqama_card_upload}`;
+        img.className = "upload-thumb";
+        img.alt = "Iqama";
+        imgHolder.appendChild(img);
+      }
+
+      // set approve form action
+      const form = document.getElementById("approveForm");
+      // blueprint prefix is assumed to be /dashboard/ops (adjust if you registered differently)
+      form.action = `/dashboard/ops/approve_driver/${d.id}`;
+
+      // show modal
+      document.getElementById("driverModal").classList.add("show");
+    }
+
+    function closeDriverModal() {
+      document.getElementById("driverModal").classList.remove("show");
+    }
+
+    function openModalById(id) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      if (el.classList.contains("show")) el.classList.remove("show");
+      else el.classList.add("show");
+    }
+
+    function confirmApprove() {
+      // basic confirm; the server also validates stage and prevents double approval
+      return confirm("Approve this driver and forward to HR? This action will set Ops Manager approval timestamp.");
+    }
+
+    // close modals by clicking on backdrop
+    window.addEventListener("click", function(e) {
+      if (e.target.classList.contains("modal")) {
+        e.target.classList.remove("show");
+      }
+    });
+
+    // close with Escape
+    window.addEventListener("keydown", function(e) {
+      if (e.key === "Escape") {
+        document.getElementById("driverModal").classList.remove("show");
+        document.getElementById("passwordModal").classList.remove("show");
+      }
+    });
+  </script>
+</div>
+
+<div id="offboardingTab" style="display:none;">
+  <div class="container">
+    <h2>Drivers to Offboard</h2>
+
+    <!-- Search Box -->
+    <div class="search-box" style="margin-bottom: 12px;">
+      <input type="text" id="offboardingSearch" placeholder="Search driver by name or Iqama..." oninput="filterOffboardingDrivers()" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #ccc;">
+    </div>
+
+    <div class="driver-cards" id="offboardingList">
+      {% for driver in offboarding_drivers %}
+        {# Get the first active offboarding record (status not Completed) #}
+        {% set offboard_record = driver.offboarding_records
+            |rejectattr("status", "equalto", "Completed")
+            |list|first %}
+
+        <div class="driver-card offboarding-card" style="margin: 10px"data-search="{{ (driver.full_name ~ ' ' ~ driver.iqama_number)|lower }}">
+          <h3>{{ driver.full_name }}</h3>
+          <p><strong>Iqama:</strong> {{ driver.iqama_number }}</p>
+          <p class="muted"><strong>Status:</strong> {{ driver.onboarding_stage }}</p>
+
+          {% if offboard_record %}
+            <p class="muted">
+              <strong>Offboarding:</strong>
+              {{ offboard_record.status }} ({{ offboard_record.requested_at.strftime('%Y-%m-%d') }})
+            </p>
+            <button class="btn secondary" disabled style="width: 100%;">Already Requested</button>
+                {% else %}
+                <button class="btn primary request-offboarding-btn" 
+                        data-driver-id="{{ driver.id }}" 
+                        data-driver-name="{{ driver.full_name }}" 
+                        style="width: 100%;">
+                  Request Offboarding
+                </button>
+                {% endif %}
+        </div>
+      {% else %}
+        <p>No completed drivers available for offboarding.</p>
+      {% endfor %}
+    </div>
+  </div>
+
+<script>
+function filterOffboardingDrivers() {
+  const query = (document.getElementById("offboardingSearch").value || "").toLowerCase();
+  document.querySelectorAll(".offboarding-card").forEach(card => {
+    const haystack = card.dataset.search;
+    card.style.display = haystack.includes(query) ? "" : "none";
+  });
+}
+
+async function requestOffboarding(driverId, btn) {
+  if (!confirm("Request offboarding for this driver?")) return;
+
+  btn.disabled = true;
+  btn.innerText = "Requesting...";
+
+  try {
+    const res = await fetch(`/dashboard/ops/api/request_offboarding/${driverId}`, {
+      method: "POST",
+      headers: { "X-Requested-With": "XMLHttpRequest" }
+    });
+
+    const data = await res.json();
+
+    if (data.success) {
+      // replace button with status text
+      const parent = btn.closest(".driver-card");
+      btn.remove();
+      const p = document.createElement("p");
+      p.className = "muted";
+      p.innerHTML = `<strong>Offboarding:</strong> Requested (${data.requested_at})`;
+      parent.appendChild(p);
+
+      const newBtn = document.createElement("button");
+      newBtn.className = "btn secondary";
+      newBtn.disabled = true;
+      newBtn.innerText = "Already Requested";
+      parent.appendChild(newBtn);
+    } else {
+      alert(data.message || "Failed to request offboarding.");
+      btn.disabled = false;
+      btn.innerText = "Request Offboarding";
+    }
+  } catch (err) {
+    console.error(err);
+    alert("Server error. Please try again.");
+    btn.disabled = false;
+    btn.innerText = "Request Offboarding";
+  }
+}
+
+document.addEventListener("DOMContentLoaded", function() {
+  document.querySelectorAll(".request-offboarding-btn").forEach(btn => {
+    btn.addEventListener("click", function() {
+      const driverId = this.dataset.driverId;
+      const driverName = this.dataset.driverName;
+      if (confirm(`Request offboarding for ${driverName}?`)) {
+        // Create a hidden form dynamically and submit
+        const form = document.createElement("form");
+        form.method = "POST";
+        form.action = `/dashboard/ops/request_offboarding/${driverId}`;
+        document.body.appendChild(form);
+        form.submit();
+      }
+    });
+  });
+});
+
+</script>
+
+</div>
+
+<script>
+function showTab(tab) {
+  document.getElementById("onboardingTab").style.display = tab === "onboarding" ? "block" : "none";
+  document.getElementById("offboardingTab").style.display = tab === "offboarding" ? "block" : "none";
+
+  document.querySelectorAll(".tab-button").forEach(btn => btn.classList.remove("active"));
+  event.target.classList.add("active");
+}
+</script>
+
+</body>
+</html>

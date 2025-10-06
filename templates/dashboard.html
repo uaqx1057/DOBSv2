@@ -1,0 +1,994 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Admin Dashboard — Drivers & Users</title>
+  <style>
+    /* ---------- layout & utility ---------- */
+    :root{
+      --bg:#f4f6f9; --nav:#2c3e50; --accent:#6c5ce7; --ok:#27ae60; --danger:#e74c3c;
+    }
+    *{box-sizing:border-box}
+    body { font-family: Arial, sans-serif; margin:0; background:var(--bg); color:#222; -webkit-font-smoothing:antialiased; }
+    .navbar { background:var(--nav); color:#fff; padding:12px 18px; display:flex; justify-content:space-between; align-items:center; }
+    .navbar .brand { font-weight:700; }
+    .navbar .nav-right { display:flex; gap:10px; align-items:center; }
+    .navbar a, .navbar button { color:#fff; margin-left:8px; text-decoration:none; font-weight:bold; background:transparent; border:none; cursor:pointer; }
+    .container { padding:20px; max-width:1200px; margin:0 auto; }
+    h1,h2 { color:#2c3e50; margin:0 0 12px 0; }
+    .tabs { margin-top:12px; }
+    .tab-btn { background:#fff; border:1px solid #ccc; padding:8px 12px; margin-right:6px; border-radius:6px; cursor:pointer; }
+    .tab-btn.active { background:var(--nav); color:#fff; }
+    .controls { display:flex; gap:12px; align-items:center; margin-bottom:12px; flex-wrap:wrap; }
+    .search-box input { padding:8px; border-radius:6px; border:1px solid #ccc; min-width:260px; }
+
+    .grid { display:grid; grid-template-columns: 1fr 360px; gap:18px; align-items:start; }
+    .card { background:#fff; padding:12px; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.06); }
+
+    .driver-cards { display:flex; flex-wrap:wrap; gap:16px; }
+    .driver-card { width:260px; background:#fff; padding:12px; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.08); position:relative; }
+    .driver-card h3 { margin:0 0 6px 0; color:#2c3e50; font-size:16px; }
+    .driver-card p { margin:4px 0; font-size:13px; color:#444; }
+    .card-actions {  bottom:12px; left:12px; right:12px; display:flex; gap:8px; }
+    .btn { padding:8px 10px; border-radius:6px; border:none; cursor:pointer; font-weight:bold; }
+    .btn.view { background:#2980b9; color:#fff; }
+    .btn.edit { background:var(--ok); color:#fff; }
+    .btn.delete { background:var(--danger); color:#fff; }
+    .btn.add { background:var(--accent); color:#fff; }
+
+    /* Users list */
+    .users-list { display:flex; flex-direction:column; gap:8px; }
+    .user-row { display:flex; align-items:center; gap:12px; justify-content:space-between; padding:10px; background:#fff; border-radius:8px; box-shadow:0 2px 6px rgba(0,0,0,0.05); }
+    .user-info { display:flex; gap:12px; align-items:center; }
+    .badge { padding:6px 8px; border-radius:6px; font-weight:700; font-size:12px; color:#fff; }
+    .badge.HR{background:#16a085}.badge.OpsManager{background:#2980b9}.badge.OpsSupervisor{background:#f39c12}.badge.FleetManager{background:#9b59b6}.badge.FinanceManager{background:#e67e22}.badge.SuperAdmin{background:#2c3e50}
+
+    /* modal */
+    .modal { display:none; position:fixed; left:0; top:0; right:0; bottom:0; background:rgba(0,0,0,0.5); justify-content:center; align-items:center; z-index:9999; }
+    .modal.show { display:flex; }
+    .modal-content { width:880px; max-width:95%; max-height:90vh; overflow-y:auto; background:#fff; border-radius:10px; padding:18px; box-shadow:0 8px 40px rgba(0,0,0,0.15); }
+    .modal-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; }
+    .close { cursor:pointer; font-size:22px; font-weight:bold; color:#333; background:transparent; border:none; }
+    .grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+    label { display:block; font-weight:700; font-size:13px; margin-bottom:4px; color:#333; }
+    input[type="text"], input[type="date"], input[type="datetime-local"], input[type="number"], select, textarea, input[type="email"], input[type="password"] {
+      width:100%; padding:8px; border:1px solid #ccc; border-radius:6px; box-sizing:border-box; font-size:14px;
+    }
+    textarea { min-height:90px; resize:vertical; }
+    .image-row { display:flex; gap:12px; margin-top:8px; flex-wrap:wrap; }
+    .image-row img { max-height:160px; border-radius:6px; box-shadow:0 3px 6px rgba(0,0,0,0.12); object-fit:contain; }
+    .muted { color:#666; font-size:13px; }
+    .small { font-size:13px; color:#555; }
+
+    @media (max-width:900px){
+      .driver-card { width:calc(50% - 20px); }
+      .grid { grid-template-columns: 1fr; }
+    }
+    @media (max-width:600px){
+      .driver-card { width:100%; }
+      .grid-2 { grid-template-columns:1fr; }
+    }
+
+    /* Toast Notification Styling */
+    .toast-container {
+      position: fixed;
+      top: 15px;
+      right: 15px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      z-index: 99999;
+    }
+    .toast {
+      background: #2ecc71;
+      color: white;
+      padding: 12px 16px;
+      border-radius: 6px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+      opacity: 0;
+      transform: translateX(100%);
+      transition: all 0.4s ease-in-out;
+      white-space: nowrap;
+    }
+    .toast.show {
+      opacity: 1;
+      transform: translateX(0);
+    }
+    .toast.error { background: var(--danger); }
+    .toast.info { background: #3498db; }
+  </style>
+</head>
+<body>
+  <div class="navbar">
+    <div class="brand">SuperAdmin Dashboard</div>
+    <div class="nav-right">
+      <!--<button class="tab-link" onclick="showSection('drivers')">Drivers</button>-->
+      <button class="tab-link" onclick="showSection('users')">Users</button>
+      <!--<button class="tab-link" onclick="showSection('reports')">Reports</button>-->
+      <button onclick="openChangePasswordModal()">Change Password</button>
+      <a href="{{ url_for('auth.logout') }}">Logout</a>
+    </div>
+  </div>
+
+  <div class="container">
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:12px;">
+      <div>
+        <h1>Drivers & Users Management</h1>
+        <div class="muted">Manage drivers (pending & completed), and manage admin users.</div>
+      </div>
+      <div style="display:flex; gap:10px; align-items:center;">
+        <button class="btn add" onclick="openAddDriverModal()">+ Add Driver</button>
+        <button class="btn add" onclick="openAddUserModal()">+ Add User</button>
+      </div>
+    </div>
+
+    <!-- Main grid: left list (drivers/users) + right stats / quick actions -->
+    <div class="grid">
+      <div>
+        <!-- Tabs -->
+        <div class="tabs">
+          <button class="tab-btn active" id="tabPendingBtn" onclick="switchDriverTab('pending')">Pending Drivers</button>
+          <button class="tab-btn" id="tabOnboardedBtn" onclick="switchDriverTab('onboarded')">Fully Onboarded</button>
+          <button class="tab-btn" id="tabPendingOffboardingBtn" onclick="switchDriverTab('pendingOffboarding')">Pending Offboarding</button>
+          <button class="tab-btn" id="tabFullyOffboardedBtn" onclick="switchDriverTab('fullyOffboarded')">Fully Offboarded</button>
+
+        </div>
+
+        <div class="tab-content" style="margin-top:12px;">
+          <div class="controls">
+            <div class="search-box">
+              <input id="globalSearch" placeholder="Search drivers by name / iqama / platform..." oninput="globalSearchFilter()">
+            </div>
+            <div class="small muted">Showing both pending and completed; use tabs to switch.</div>
+          </div>
+
+          <!-- Pending drivers -->
+          <div id="pendingTab" style="display:block;">
+            <div class="driver-cards" id="pendingCards">
+              {% for driver in drivers if driver.onboarding_stage != "Completed" %}
+              <div class="driver-card" data-driver='{{ driver | tojson | safe }}'>
+                <h3>{{ driver.get('full_name') }}</h3>
+                <p class="small"><strong>Iqama:</strong> {{ driver.get('iqama_number', '') }}</p>
+                <p class="small"><strong>Platform:</strong> {{ driver.get('platform') or "N/A" }}</p>
+                <p class="small"><strong>Status:</strong> {{ driver.get('onboarding_stage') or "" }}</p>
+
+                <div class="card-actions">
+                  <button class="btn view" onclick="openViewModal(event,this)">View</button>
+                  <button class="btn edit" onclick="openEditModal(event,this)">Edit</button>
+
+                  <form method="POST" action="{{ url_for('admin.delete_driver', driver_id=driver.get('id')) }}" style="display:inline;">
+                    <button type="submit" class="btn delete" onclick="return confirm('Delete this driver?')">Delete</button>
+                  </form>
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+
+          <!-- Onboarded -->
+          <!-- Fully Onboarded (Completed but Not Offboarded) -->
+<div id="onboardedTab" style="display:none;">
+  <div class="driver-cards" id="onboardedCards">
+    {% set found = false %}
+    {% for driver in fully_onboarded_drivers %}
+      {% set found = true %}
+      <div class="driver-card" data-driver='{{ driver | tojson | safe }}'>
+        <h3>{{ driver.full_name }}</h3>
+        <p class="small"><strong>Iqama:</strong> {{ driver.iqama_number or '' }}</p>
+        <p class="small"><strong>Vehicle:</strong> {{ driver.car_details or "N/A" }}</p>
+        <p class="small"><strong>Platform:</strong> {{ driver.platform or "N/A" }}</p>
+        <p class="small"><strong>Finance Approved:</strong> {{ driver.finance_approved_at or "N/A" }}</p>
+
+        <div class="card-actions">
+          <button class="btn view" onclick="openViewModal(event,this)">View</button>
+          <button class="btn edit" onclick="openEditModal(event,this)">Edit</button>
+          <form method="POST" action="{{ url_for('admin.delete_driver', driver_id=driver.id) }}" style="display:inline;">
+            <button type="submit" class="btn delete" onclick="return confirm('Delete this driver?')">Delete</button>
+          </form>
+        </div>
+      </div>
+    {% endfor %}
+
+    {% if not found %}
+      <p class="muted small" style="text-align:center;">No fully onboarded drivers found.</p>
+    {% endif %}
+  </div>
+</div>
+
+
+          <!-- Pending Offboarding -->
+          <div id="pendingOffboardingTab" style="display:none;">
+            <div class="driver-cards" id="pendingOffboardingCards">
+                {% for driver in pending_offboarding_drivers %}
+  <div class="driver-card" data-driver='{{ driver | tojson | safe }}'>
+    <h3>{{ driver.full_name }}</h3>
+    <p><strong>Iqama:</strong> {{ driver.iqama_number }}</p>
+    <p><strong>Platform:</strong> {{ driver.platform or "N/A" }}</p>
+  </div>
+{% else %}
+  <p class="muted small" style="text-align:center;">No pending offboarding drivers found.</p>
+{% endfor %}
+
+            </div>
+          </div>
+
+          <!-- Fully Offboarded -->
+          <div id="fullyOffboardedTab" style="display:none;">
+            <div class="driver-cards" id="fullyOffboardedCards">
+{% for driver in completed_offboarding_drivers %}
+  <div class="driver-card" data-driver='{{ driver | tojson | safe }}'>
+              <h3>{{ driver.get('full_name') }}</h3>
+                <p class="small"><strong>Iqama:</strong> {{ driver.get('iqama_number', '') }}</p>
+                <p class="small"><strong>Platform:</strong> {{ driver.get('platform') or "N/A" }}</p>
+                <p class="small"><strong>Onboarding Stage:</strong> {{ driver.get('onboarding_stage') or "" }}</p>
+                <p class="small"><strong>Offboarding Stage:</strong> {{ driver.get('offboarding_stage') or "" }}</p>
+                <p class="small"><strong>All approvals:</strong></p>
+                <ul class="small muted">
+                  <li>Ops Manager: {{ driver.get('ops_manager_approved_at') or "Pending" }}</li>
+                  <li>HR: {{ driver.get('hr_approved_at') or "Pending" }}</li>
+                  <li>Ops Supervisor: {{ driver.get('ops_supervisor_approved_at') or "Pending" }}</li>
+                  <li>Fleet Manager: {{ driver.get('fleet_manager_approved_at') or "Pending" }}</li>
+                  <li>Finance: {{ driver.get('finance_approved_at') or "Pending" }}</li>
+                </ul>
+          <p class="small"><strong>Transfer Fee Paid:</strong> {{ 'Yes' if driver.transfer_fee_paid else 'No' }}</p>
+          <p class="small"><strong>Amount:</strong> {{ driver.transfer_fee_amount or "N/A" }}</p>
+              </div>
+{% else %}
+  <p class="muted small" style="text-align:center;">No fully offboarded drivers found.</p>
+{% endfor %}
+            </div>
+          </div>
+
+          
+
+        </div>
+      </div>
+
+      <!-- RIGHT COLUMN: users list + stats -->
+      <div>
+        <div class="card" style="width: 400px;">
+          <h2>Quick Stats</h2>
+            <p class="small">Total drivers: <strong>{{ total_drivers or 0 }}</strong></p>
+            <p class="small">Pending onboarded drivers: <strong>{{ total_pending_onboarded or 0 }}</strong></p>
+            <p class="small">Completed onboarded drivers: <strong>{{ total_completed_onboarded or 0 }}</strong></p>
+            <p class="small">Pending offboarded drivers: <strong>{{ total_pending_offboarded or 0 }}</strong></p>
+            <p class="small">Completed offboarded drivers: <strong>{{ total_completed_offboarded or 0 }}</strong></p>
+            <p class="small">Total users: <strong>{{ total_users or 0 }}</strong></p>
+          </div>
+
+
+
+        <div style="height:12px;"></div>
+
+        <div class="card" style=" width: 400px;">
+          <h2>Users</h2>
+          <div style="margin:8px 0;">
+            <input id="userSearch" placeholder="Search users..." oninput="filterUsers()" style="width:100%; padding:8px; border-radius:6px; border:1px solid #ccc;">
+          </div>
+          <div class="users-list" id="usersList">
+            {% for user in users %}
+            <div class="user-row" data-user='{{ user | tojson | safe }}'>
+              <div class="user-info">
+                <div>
+                  <div style="font-weight:700">{{ user.get('name') or user.get('username') }}</div>
+                  <div class="small muted">{{ user.get('email') or '' }}</div>
+                </div>
+                <div>
+                  <span class="badge {{ user.get('role') }}">{{ user.get('role') }}</span>
+                </div>
+              </div>
+              <div style="display:flex;gap:8px;">
+                <button class="btn view" onclick="openUserEditModalFromRow(event,this)">Edit</button>
+                <form method="POST" action="{{ url_for('admin.delete_user', user_id=user.get('id')) }}" style="display:inline;">
+                  <button type="submit" class="btn delete" onclick="return confirm('Delete this user?')">Delete</button>
+                </form>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== VIEW DRIVER MODAL ========== -->
+  <div id="viewModal" class="modal" aria-hidden="true">
+    <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="viewModalTitle">
+      <div class="modal-header">
+        <h2 id="viewModalTitle">Driver Details</h2>
+        <button class="close" onclick="closeModal('viewModal')">&times;</button>
+      </div>
+      <div id="viewContent"></div>
+    </div>
+  </div>
+
+  <!-- ========== EDIT DRIVER MODAL ========== -->
+  <div id="editModal" class="modal" aria-hidden="true">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Edit Driver</h2>
+        <button class="close" onclick="closeModal('editModal')">&times;</button>
+      </div>
+
+      <form id="editForm" method="POST" enctype="multipart/form-data">
+        <!-- server-side will pick up all posted fields — form action set dynamically -->
+        <input type="hidden" name="driver_id" id="edit_driver_id">
+        <div class="grid-2">
+          <div>
+            <label>Full name</label>
+            <input type="text" id="edit_full_name" name="full_name" required>
+          </div>
+          <div>
+            <label>Iqama number</label>
+            <input type="text" id="edit_iqama_number" name="iqama_number" required>
+          </div>
+
+          <div>
+            <label>Iqama expiry</label>
+            <input type="date" id="edit_iqama_expiry" name="iqama_expiry_date">
+          </div>
+
+          <div>
+            <label>Nationality</label>
+            <input type="text" id="edit_nationality" name="nationality">
+          </div>
+
+          <div>
+            <label>Mobile number</label>
+            <input type="text" id="edit_mobile_number" name="mobile_number">
+          </div>
+
+          <div>
+            <label>Previous sponsor number</label>
+            <input type="text" id="edit_previous_sponsor_number" name="previous_sponsor_number">
+          </div>
+
+          <div>
+            <label>Saudi driving license</label>
+            <select id="edit_saudi_driving_license" name="saudi_driving_license">
+              <option value="false">No</option>
+              <option value="true">Yes</option>
+            </select>
+          </div>
+
+          <div>
+            <label>Platform</label>
+            <input type="text" id="edit_platform" name="platform">
+          </div>
+
+          <div>
+            <label>Platform ID</label>
+            <input type="text" id="edit_platform_id" name="platform_id">
+          </div>
+
+          <div>
+            <label>Issued mobile number</label>
+            <input type="text" id="edit_issued_mobile_number" name="issued_mobile_number">
+          </div>
+
+          <div>
+            <label>Issued device id</label>
+            <input type="text" id="edit_issued_device_id" name="issued_device_id">
+          </div>
+
+          <div>
+            <label>Mobile issued</label>
+            <select id="edit_mobile_issued" name="mobile_issued">
+              <option value="false">No</option>
+              <option value="true">Yes</option>
+            </select>
+          </div>
+
+          <div>
+            <label>Car details</label>
+            <input type="text" id="edit_car_details" name="car_details">
+          </div>
+
+          <div>
+            <label>Assignment date</label>
+            <input type="date" id="edit_assignment_date" name="assignment_date">
+          </div>
+
+          <div>
+            <label>TAMM authorized</label>
+            <select id="edit_tamm_authorized" name="tamm_authorized">
+              <option value="false">No</option>
+              <option value="true">Yes</option>
+            </select>
+          </div>
+
+          <div>
+            <label>TAMM authorization screenshot (upload/replace)</label>
+            <input type="file" id="edit_tamm_authorization_ss" name="tamm_authorization_ss" accept=".jpg,.jpeg,.png,.pdf">
+          </div>
+
+          <div>
+            <label>Transfer fee paid</label>
+            <select id="edit_transfer_fee_paid" name="transfer_fee_paid">
+              <option value="false">No</option>
+              <option value="true">Yes</option>
+            </select>
+          </div>
+
+          <div>
+            <label>Transfer fee amount</label>
+            <input type="number" step="0.01" id="edit_transfer_fee_amount" name="transfer_fee_amount">
+          </div>
+
+          <div>
+            <label>Transfer fee paid at</label>
+            <input type="datetime-local" id="edit_transfer_fee_paid_at" name="transfer_fee_paid_at">
+          </div>
+
+          <div>
+            <label>Transfer fee receipt (upload/replace)</label>
+            <input type="file" id="edit_transfer_fee_receipt" name="transfer_fee_receipt" accept=".jpg,.jpeg,.png,.pdf">
+          </div>
+
+          <div>
+            <label>Onboarding stage</label>
+            <input type="text" id="edit_onboarding_stage" name="onboarding_stage">
+          </div>
+
+        </div>
+
+        <div style="margin-top:12px; display:flex; gap:8px; justify-content:flex-end;">
+          <button type="button" class="btn" onclick="closeModal('editModal')">Cancel</button>
+          <button type="submit" class="btn edit">Save changes</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ========== ADD DRIVER MODAL ========== -->
+  <div id="addModal" class="modal" aria-hidden="true">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Add Driver</h2>
+        <button class="close" onclick="closeModal('addModal')">&times;</button>
+      </div>
+
+      <form id="addForm" method="POST" action="{{ url_for('admin.add_driver') }}" enctype="multipart/form-data">
+        <div class="grid-2">
+          <div>
+            <label>Full name</label>
+            <input type="text" name="full_name" required>
+          </div>
+          <div>
+            <label>Iqama number</label>
+            <input type="text" name="iqama_number" required>
+          </div>
+
+          <div>
+            <label>Iqama expiry</label>
+            <input type="date" name="iqama_expiry_date">
+          </div>
+
+          <div>
+            <label>Nationality</label>
+            <input type="text" name="nationality">
+          </div>
+
+          <div>
+            <label>Mobile number</label>
+            <input type="text" name="mobile_number">
+          </div>
+
+          <div>
+            <label>Platform</label>
+            <input type="text" name="platform">
+          </div>
+
+          <div>
+            <label>Platform ID</label>
+            <input type="text" name="platform_id">
+          </div>
+
+          <div>
+            <label>Car details</label>
+            <input type="text" name="car_details">
+          </div>
+
+          <div>
+            <label>Assignment date</label>
+            <input type="date" name="assignment_date">
+          </div>
+
+          <div>
+            <label>Iqama card upload</label>
+            <input type="file" name="iqama_card_upload" accept=".jpg,.png,.jpeg,.pdf">
+          </div>
+
+          <div>
+            <label>TAMM authorization screenshot</label>
+            <input type="file" name="tamm_authorization_ss" accept=".jpg,.png,.jpeg,.pdf">
+          </div>
+
+        </div>
+
+        <div style="margin-top:12px; display:flex; gap:8px; justify-content:flex-end;">
+          <button type="button" class="btn" onclick="closeModal('addModal')">Cancel</button>
+          <button type="submit" class="btn add">Create driver</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ========== ADD USER MODAL ========== -->
+  <div id="addUserModal" class="modal" aria-hidden="true">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Add User</h2>
+        <button class="close" onclick="closeModal('addUserModal')">&times;</button>
+      </div>
+
+      <form id="addUserForm" method="POST" action="{{ url_for('admin.add_user') }}">
+        <div class="grid-2">
+          <div>
+            <label>Full Name</label>
+            <input type="text" name="name" required>
+          </div>
+          <div>
+            <label>Username</label>
+            <input type="text" name="username" required>
+          </div>
+
+          <div>
+            <label>Email</label>
+            <input type="email" name="email" required>
+          </div>
+
+          <div>
+            <label>Password</label>
+            <input type="password" name="password" required>
+          </div>
+
+          <div>
+            <label>Designation</label>
+            <input type="text" name="designation">
+          </div>
+
+          <div>
+            <label>Branch City</label>
+            <input type="text" name="branch_city">
+          </div>
+
+          <div style="grid-column:1/-1">
+            <label>Role</label>
+            <select name="role" required>
+              <option value="">-- Select Role --</option>
+              <option value="SuperAdmin">SuperAdmin</option>
+              <option value="HR">HR</option>
+              <option value="OpsManager">OpsManager</option>
+              <option value="OpsSupervisor">OpsSupervisor</option>
+              <option value="FleetManager">FleetManager</option>
+              <option value="FinanceManager">FinanceManager</option>
+            </select>
+          </div>
+        </div>
+
+        <div style="margin-top:12px; display:flex; gap:8px; justify-content:flex-end;">
+          <button type="button" class="btn" onclick="closeModal('addUserModal')">Cancel</button>
+          <button type="submit" class="btn add">Create user</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ========== EDIT USER MODAL (AJAX) ========== -->
+  <div id="editUserModal" class="modal" aria-hidden="true">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Edit User</h2>
+        <button class="close" onclick="closeModal('editUserModal')">&times;</button>
+      </div>
+
+      <form id="editUserForm" method="POST">
+        <input type="hidden" id="edit_user_id" name="user_id">
+        <div class="grid-2">
+          <div>
+            <label>Username</label>
+            <input type="text" id="edit_user_username" name="username" required>
+          </div>
+          <div>
+            <label>Full name</label>
+            <input type="text" id="edit_user_name" name="name" required>
+          </div>
+
+          <div style="grid-column:1/-1">
+            <label>Role</label>
+            <select id="edit_user_role" name="role" required>
+              <option value="SuperAdmin">SuperAdmin</option>
+              <option value="HR">HR</option>
+              <option value="OpsManager">OpsManager</option>
+              <option value="OpsSupervisor">OpsSupervisor</option>
+              <option value="FleetManager">FleetManager</option>
+              <option value="FinanceManager">FinanceManager</option>
+            </select>
+          </div>
+        </div>
+
+        <div style="margin-top:12px; display:flex; gap:8px; justify-content:flex-end;">
+          <button type="button" class="btn" onclick="closeModal('editUserModal')">Cancel</button>
+          <button type="submit" class="btn edit">Save changes</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ========== CHANGE PASSWORD MODAL ========== -->
+  <div id="changePasswordModal" class="modal" aria-hidden="true">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Change Your Password</h2>
+        <button class="close" onclick="closeModal('changePasswordModal')">&times;</button>
+      </div>
+      <form method="POST" action="{{ url_for('admin.change_password') }}">
+        <div>
+          <label>Current password</label>
+          <input type="password" name="current_password" required>
+        </div>
+        <div>
+          <label>New password</label>
+          <input type="password" name="new_password" required>
+        </div>
+        <div>
+          <label>Confirm new password</label>
+          <input type="password" name="confirm_password" required>
+        </div>
+        <div style="margin-top:12px; display:flex; gap:8px; justify-content:flex-end;">
+          <button type="button" class="btn" onclick="closeModal('changePasswordModal')">Cancel</button>
+          <button type="submit" class="btn add">Update Password</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Toast container -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <!-- ================= SCRIPTS ================= -->
+  <script>
+    /* ----------------- Basic UI helpers ----------------- */
+function switchDriverTab(tab){
+  const tabs = ['pending','onboarded','pendingOffboarding','fullyOffboarded'];
+  const tabIds = ['pendingTab','onboardedTab','pendingOffboardingTab','fullyOffboardedTab'];
+  const btnIds = ['tabPendingBtn','tabOnboardedBtn','tabPendingOffboardingBtn','tabFullyOffboardedBtn'];
+
+  tabs.forEach((t,i)=>{
+    document.getElementById(tabIds[i]).style.display = (tab === t ? 'block' : 'none');
+    document.getElementById(btnIds[i]).classList.toggle('active', tab === t);
+  });
+}
+
+    function showSection(s){
+      // small placeholder for future multi-section switching (drivers/users/reports)
+      if(s === 'users') {
+        window.scrollTo({top: document.querySelector('.users-list').offsetTop - 120, behavior:'smooth'});
+        // open users panel by focusing search
+        document.getElementById('userSearch')?.focus();
+      } else if (s === 'reports') {
+        // jump to top or show a reports section if you add one
+        window.scrollTo({top:0, behavior:'smooth'});
+      } else {
+        window.scrollTo({top:0, behavior:'smooth'});
+      }
+    }
+
+    /* ----------------- modal open/close ----------------- */
+    function openViewModal(e, btn){
+      e.stopPropagation();
+      try{
+        const card = btn.closest('.driver-card');
+        const data = JSON.parse(card.dataset.driver);
+        renderViewModal(data);
+        document.getElementById('viewModal').classList.add('show');
+        document.getElementById('viewModal').focus();
+      }catch(err){
+        console.error('openViewModal error', err);
+        showToast('Unable to open driver details — check console.', 'error');
+      }
+    }
+
+    function renderViewModal(d){
+      let html = '<div style="display:flex;gap:16px;flex-direction:column;">';
+      html += '<div style="display:flex;gap:16px;flex-wrap:wrap;">';
+      html += `<div style="flex:1"><h3>${escapeHTML(d.full_name || '')}</h3>`;
+      html += `<p><strong>Iqama:</strong> ${escapeHTML(d.iqama_number || '')}</p>`;
+      html += `<p><strong>Iqama expiry:</strong> ${escapeHTML(d.iqama_expiry_date || '')}</p>`;
+      html += `<p><strong>Nationality:</strong> ${escapeHTML(d.nationality || '')}</p>`;
+      html += `<p><strong>Mobile:</strong> ${escapeHTML(d.mobile_number || '')}</p>`;
+      html += `<p><strong>Prev sponsor:</strong> ${escapeHTML(d.previous_sponsor_number || '')}</p>`;
+      html += `<p><strong>Platform:</strong> ${escapeHTML(d.platform || '')}</p>`;
+      html += `<p><strong>Platform ID:</strong> ${escapeHTML(d.platform_id || '')}</p>`;
+      html += `<p><strong>Issued Mobile:</strong> ${escapeHTML(d.issued_mobile_number || '')}</p>`;
+      html += `<p><strong>Issued Device ID:</strong> ${escapeHTML(d.issued_device_id || '')}</p>`;
+      html += `<p><strong>Mobile issued:</strong> ${d.mobile_issued ? '✅ Yes' : '❌ No'}</p>`;
+      html += `<p><strong>Car Details:</strong> ${escapeHTML(d.car_details || '')}</p>`;
+      html += `<p><strong>Assignment date:</strong> ${escapeHTML(d.assignment_date || '')}</p>`;
+      html += `<p><strong>TAMM authorized:</strong> ${d.tamm_authorized ? '✅ Yes' : '❌ No'}</p>`;
+      html += `</div></div>`;
+
+      // images
+      if(d.iqama_card_upload || d.tamm_authorization_ss || d.transfer_fee_receipt){
+        html += '<div class="image-row">';
+        if(d.iqama_card_upload){
+          html += `<div><label class="small">Iqama card</label><br><img src="/static/uploads/${encodeURIComponent(d.iqama_card_upload)}" alt="iqama"></div>`;
+        }
+        if(d.tamm_authorization_ss){
+          html += `<div><label class="small">TAMM screenshot</label><br><img src="/static/uploads/${encodeURIComponent(d.tamm_authorization_ss)}" alt="tamm"></div>`;
+        }
+        if(d.transfer_fee_receipt){
+          html += `<div><label class="small">Transfer proof</label><br><a href="/static/uploads/${encodeURIComponent(d.transfer_fee_receipt)}" target="_blank"><img src="/static/uploads/${encodeURIComponent(d.transfer_fee_receipt)}" alt="receipt"></a></div>`;
+        }
+        html += '</div>';
+      }
+
+      // approvals & transfer fee
+      html += '<hr>';
+      html += '<div class="grid-2">';
+      html += `<div><p><strong>Ops manager approved:</strong> ${escapeHTML(d.ops_manager_approved_at || 'Pending')}</p>
+                    <p><strong>HR approved:</strong> ${escapeHTML(d.hr_approved_at || 'Pending')}</p>
+                    <p><strong>Ops supervisor approved:</strong> ${escapeHTML(d.ops_supervisor_approved_at || 'Pending')}</p></div>`;
+      html += `<div><p><strong>Fleet manager approved:</strong> ${escapeHTML(d.fleet_manager_approved_at || 'Pending')}</p>
+                    <p><strong>Finance approved:</strong> ${escapeHTML(d.finance_approved_at || 'Pending')}</p></div>`;
+      html += '</div>';
+
+      html += '<hr>';
+      html += `<p><strong>Transfer fee paid:</strong> ${d.transfer_fee_paid ? '✅ Yes' : '❌ No'}</p>`;
+      html += `<p><strong>Amount:</strong> ${escapeHTML(d.transfer_fee_amount || '')}</p>`;
+      html += `<p><strong>Paid at:</strong> ${escapeHTML(d.transfer_fee_paid_at || '')}</p>`;
+
+      html += '</div>';
+      document.getElementById('viewContent').innerHTML = html;
+    }
+
+    function openEditModal(e, btn){
+      e.stopPropagation();
+      try{
+        const card = btn.closest('.driver-card');
+        const d = JSON.parse(card.dataset.driver);
+        populateEditForm(d);
+        document.getElementById('editModal').classList.add('show');
+      }catch(err){
+        console.error('openEditModal', err);
+        showToast('Unable to open edit form — check console.', 'error');
+      }
+    }
+
+    function populateEditForm(d){
+      document.getElementById('edit_driver_id').value = d.id || '';
+      document.getElementById('edit_full_name').value = d.full_name || '';
+      document.getElementById('edit_iqama_number').value = d.iqama_number || '';
+      if(d.iqama_expiry_date) document.getElementById('edit_iqama_expiry').value = d.iqama_expiry_date;
+      document.getElementById('edit_nationality').value = d.nationality || '';
+      document.getElementById('edit_mobile_number').value = d.mobile_number || '';
+      document.getElementById('edit_previous_sponsor_number').value = d.previous_sponsor_number || '';
+      document.getElementById('edit_saudi_driving_license').value = d.saudi_driving_license ? 'true' : 'false';
+      document.getElementById('edit_platform').value = d.platform || '';
+      document.getElementById('edit_platform_id').value = d.platform_id || '';
+      document.getElementById('edit_issued_mobile_number').value = d.issued_mobile_number || '';
+      document.getElementById('edit_issued_device_id').value = d.issued_device_id || '';
+      document.getElementById('edit_mobile_issued').value = d.mobile_issued ? 'true' : 'false';
+      document.getElementById('edit_car_details').value = d.car_details || '';
+      if(d.assignment_date) document.getElementById('edit_assignment_date').value = d.assignment_date;
+      document.getElementById('edit_tamm_authorized').value = d.tamm_authorized ? 'true' : 'false';
+      document.getElementById('edit_transfer_fee_paid').value = d.transfer_fee_paid ? 'true' : 'false';
+      document.getElementById('edit_transfer_fee_amount').value = d.transfer_fee_amount || '';
+      if(d.transfer_fee_paid_at) document.getElementById('edit_transfer_fee_paid_at').value = d.transfer_fee_paid_at;
+      document.getElementById('edit_onboarding_stage').value = d.onboarding_stage || '';
+
+      // set form action dynamically: update endpoint
+      document.getElementById('editForm').action = `/dashboard/driver/${d.id}/update`;
+    }
+
+    function openAddDriverModal(){ document.getElementById('addModal').classList.add('show'); }
+    function openAddUserModal(){ document.getElementById('addUserModal').classList.add('show'); }
+    function openChangePasswordModal(){ document.getElementById('changePasswordModal').classList.add('show'); }
+
+    function closeModal(id){
+      const el = document.getElementById(id);
+      if(el) el.classList.remove('show');
+    }
+
+    // close on click outside content
+    window.addEventListener('click', function(e){
+      if(e.target.classList && e.target.classList.contains('modal')){
+        e.target.classList.remove('show');
+      }
+    });
+
+    // close on escape
+    window.addEventListener('keydown', function(e){
+      if(e.key === 'Escape'){
+        document.querySelectorAll('.modal.show').forEach(m => m.classList.remove('show'));
+      }
+    });
+
+    /* ----------------- USERS: edit modal population and submit ----------------- */
+    function openUserEditModalFromRow(e, btn){
+      e.stopPropagation();
+      const row = btn.closest('.user-row');
+      const u = JSON.parse(row.dataset.user);
+      openUserEditModal(u);
+    }
+    function openUserEditModal(u){
+      document.getElementById('edit_user_id').value = u.id || '';
+      document.getElementById('edit_user_username').value = u.username || '';
+      document.getElementById('edit_user_name').value = u.name || '';
+      document.getElementById('edit_user_role').value = u.role || '';
+      // action endpoint
+      document.getElementById('editUserForm').action = `/dashboard/edit_user/${u.id}`;
+      document.getElementById('editUserModal').classList.add('show');
+    }
+
+    // Edit user AJAX
+    document.getElementById('editUserForm').addEventListener('submit', async function(ev){
+      ev.preventDefault();
+      const form = ev.target;
+      const fd = new FormData(form);
+      try {
+        const res = await fetch(form.action, { method:'POST', body: fd });
+        if(res.ok){
+          showToast('✅ User updated');
+          setTimeout(()=>location.reload(),800);
+        } else {
+          showToast('❌ Failed to update user', 'error');
+        }
+      } catch(e){
+        console.error(e);
+        showToast('⚠️ Network error while updating user', 'error');
+      }
+    });
+
+    // Add user uses regular POST (server redirects). You can convert to AJAX if you want.
+
+    /* ----------------- EDIT DRIVER submit (AJAX) ----------------- */
+    document.getElementById('editForm').addEventListener('submit', async function(ev){
+      ev.preventDefault();
+      const form = ev.target;
+      if(!form.action) { showToast('No endpoint for update!', 'error'); return; }
+      const fd = new FormData(form);
+      try{
+        const res = await fetch(form.action, { method:'POST', body: fd });
+        if(res.ok){
+          showToast('✅ Driver updated');
+          setTimeout(()=>location.reload(),900);
+        } else {
+          const txt = await res.text();
+          showToast('❌ Failed to save driver: '+ (txt || res.status), 'error');
+        }
+      }catch(err){
+        console.error(err);
+        showToast('⚠️ Network error while updating driver', 'error');
+      }
+    });
+
+    /* ----------------- AJAX DELETE for drivers & users (progressive) ----------------- */
+    // Drivers delete forms
+    document.querySelectorAll("form[action*='delete_driver']").forEach(form => {
+      form.addEventListener("submit", async e => {
+        e.preventDefault();
+        if(!confirm("Are you sure you want to delete this driver?")) return;
+        try {
+          const res = await fetch(form.action, { method: "POST" });
+          if(res.ok){
+            const card = form.closest('.driver-card');
+            if(card) card.remove();
+            showToast('🗑 Driver deleted');
+          } else {
+            showToast('❌ Could not delete driver', 'error');
+          }
+        } catch(err){
+          console.error(err);
+          showToast('⚠️ Network error while deleting driver', 'error');
+        }
+      });
+    });
+
+    // Users delete forms
+    document.querySelectorAll("form[action*='delete_user']").forEach(form => {
+      form.addEventListener("submit", async e => {
+        e.preventDefault();
+        if(!confirm("Are you sure you want to delete this user?")) return;
+        try {
+          const res = await fetch(form.action, { method: "POST" });
+          if(res.ok){
+            const row = form.closest('.user-row');
+            if(row) row.remove();
+            showToast('🗑 User deleted');
+          } else {
+            showToast('❌ Could not delete user', 'error');
+          }
+        } catch(err){
+          console.error(err);
+          showToast('⚠️ Network error while deleting user', 'error');
+        }
+      });
+    });
+
+    /* ----------------- search / filter helpers ----------------- */
+    function globalSearchFilter(){
+      const q = (document.getElementById('globalSearch').value || '').toLowerCase().trim();
+      document.querySelectorAll('.driver-card').forEach(card => {
+        const json = card.dataset.driver || '{}';
+        try{
+          const d = JSON.parse(json);
+          const hay = `${d.full_name||''} ${d.iqama_number||''} ${d.platform||''}`.toLowerCase();
+          card.style.display = hay.includes(q) ? '' : 'none';
+        }catch(e){ card.style.display = ''; }
+      });
+    }
+
+    function filterUsers(){
+      const q = (document.getElementById('userSearch').value || '').toLowerCase().trim();
+      document.querySelectorAll('.user-row').forEach(row=>{
+        const u = JSON.parse(row.dataset.user || '{}');
+        const hay = `${u.name||''} ${u.username||''} ${u.email||''}`.toLowerCase();
+        row.style.display = hay.includes(q) ? '' : 'none';
+      });
+    }
+
+    /* ----------------- small utilities ----------------- */
+    function escapeHTML(s){
+      if(s === undefined || s === null) return '';
+      return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+        .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+    }
+
+    // Open view by id (optional programmatic)
+    function openViewById(id){
+      const card = Array.from(document.querySelectorAll('.driver-card')).find(c => {
+        try{ return JSON.parse(c.dataset.driver).id == id; }catch(e){return false;}
+      });
+      if(card) openViewModal({stopPropagation:()=>{}}, card.querySelector('.view') || card);
+    }
+
+    /* ----------------- toast helper & flash messages ----------------- */
+    function showToast(message, type="success") {
+      const container = document.getElementById("toastContainer");
+      const toast = document.createElement("div");
+      toast.className = "toast " + (type === "error" ? "error" : (type === "info" ? "info": ""));
+      toast.innerText = message;
+      container.appendChild(toast);
+      setTimeout(() => toast.classList.add("show"), 50);
+      setTimeout(() => {
+        toast.classList.remove("show");
+        setTimeout(() => toast.remove(), 400);
+      }, 3500);
+    }
+
+    // show flashed messages from Flask (if any)
+    (function () {
+      // We wrap everything in quotes first, then JSON.parse it
+      let flashed = [];
+      try {
+        flashed = JSON.parse('{{ get_flashed_messages(with_categories=true) | default([]) | tojson | safe }}');
+      } catch (err) {
+        console.warn("Could not parse flashed messages:", err);
+        flashed = [];
+      }
+
+      if (Array.isArray(flashed) && flashed.length) {
+        flashed.forEach(function (item) {
+          const category = Array.isArray(item) ? item[0] : "info";
+          const message = Array.isArray(item) ? item[1] : String(item);
+          const type =
+            category === "success"
+              ? "success"
+              : category === "danger" || category === "error"
+              ? "error"
+              : "info";
+
+          if (typeof showToast === "function") {
+            showToast(message, type);
+          } else {
+            console.log("[FLASH]", type, message);
+          }
+        });
+      }
+    })();
+  </script>
+</body>
+</html>

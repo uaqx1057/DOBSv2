@@ -1,0 +1,875 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>HR Dashboard</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; background: #f8f9fa; -webkit-font-smoothing:antialiased; }
+    .navbar { background: #2c3e50; padding: 15px; color: white; display:flex; justify-content:space-between; align-items:center; }
+    .navbar a { color: white; margin-left:12px; text-decoration:none; font-weight:bold; cursor:pointer; }
+    .container { padding:20px; max-width:1200px; margin:0 auto; }
+    h2 { color:#2c3e50; margin:0 0 12px 0; }
+
+    /* Tabs */
+    .tabs { margin-bottom: 12px; }
+    .tab-btn { padding:8px 12px; border:1px solid #ccc; border-radius:6px; margin-right:6px; background:#fff; cursor:pointer; }
+    .tab-btn.active { background:#2c3e50; color:#fff; }
+
+    /* search */
+    .search-box { margin:10px 0; display:flex; gap:8px; align-items:center; }
+    .search-input { flex:1; padding:8px; border-radius:6px; border:1px solid #ccc; }
+
+    /* cards */
+    .driver-cards { display:flex; flex-wrap:wrap; gap:16px; }
+    .driver-card { background:#fff; padding:14px; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.06); width:280px; cursor:pointer; }
+    .driver-card h3 { margin:0 0 6px 0; color:#2c3e50; }
+    .driver-card p { margin:4px 0; color:#444; font-size:14px; }
+
+    /* buttons */
+    .btn { padding:8px 12px; border-radius:6px; border:none; font-weight:700; cursor:pointer; }
+    .btn.primary { background:#2c81d6; color:#fff; }
+    .btn.ghost { background:#eee; color:#333; }
+    .btn.success { background:#27ae60; color:#fff; }
+
+    /* modals */
+    .modal { display:none; position:fixed; left:0; top:0; right:0; bottom:0; background:rgba(0,0,0,0.5); justify-content:center; align-items:center; z-index:9999; }
+    .modal.show { display:flex; }
+    .modal-content { background:#fff; width:680px; max-width:94%; max-height:92vh; overflow-y:auto; border-radius:10px; padding:18px; box-shadow:0 10px 40px rgba(0,0,0,0.15); }
+    .modal-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; }
+    .close { background:transparent; border:none; font-size:22px; cursor:pointer; color:#333; }
+    .grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+    label { font-weight:700; display:block; margin-bottom:6px; }
+    input[type="text"], input[type="date"], input[type="datetime-local"], input[type="file"], select, textarea {
+      width:100%; padding:8px; border-radius:6px; border:1px solid #ccc; box-sizing:border-box; font-size:14px;
+    }
+    textarea { min-height:100px; resize:vertical; }
+    .image-row { display:flex; gap:12px; flex-wrap:wrap; margin-top:8px; }
+    .image-row img { max-height:160px; border-radius:6px; box-shadow:0 4px 12px rgba(0,0,0,0.12); object-fit:contain; }
+
+    /* small */
+    .muted { color:#666; font-size:13px; }
+    @media (max-width:780px) {
+      .driver-card { width:calc(50% - 20px); }
+      .modal-content { width: 94%; padding:14px; }
+      .grid-2 { grid-template-columns:1fr; }
+    }
+    @media (max-width:480px) {
+      .driver-card { width:100%; }
+    }
+
+    /* toast */
+    .toast-container { position:fixed; top:16px; right:16px; display:flex; flex-direction:column; gap:8px; z-index:20000; }
+    .toast { padding:10px 14px; border-radius:8px; color:#fff; box-shadow:0 6px 18px rgba(0,0,0,0.12); transform:translateX(120%); opacity:0; transition:all .36s; white-space:nowrap; }
+    .toast.show { transform:translateX(0); opacity:1; }
+    .toast.success { background:#27ae60; } .toast.error { background:#e74c3c; }
+
+  </style>
+</head>
+<body>
+  <div class="navbar">
+    <div><strong>HR Dashboard</strong></div>
+    <div style="display:flex; align-items:center;">
+      <div style="margin-right:12px;">{{ current_user.name or current_user.username }} ({{ current_user.role }})</div>
+      <a onclick="openModal('passwordModal')">Change Password</a>
+      <a href="{{ url_for('auth.logout') }}" style="margin-left:10px;">Logout</a>
+    </div>
+  </div>
+
+  <div class="container">
+    <h2>HR Workflow</h2>
+    <!-- Tabs -->
+  <div class="tabs">
+      <button id="tabHr" class="tab-btn active" onclick="switchTab('hrTab')">HR Stage</button>
+      <button id="tabFinal" class="tab-btn" onclick="switchTab('finalTab')">HR Final (Transfership)</button>
+      <button id="tabCompleted" class="tab-btn" onclick="switchTab('completedTab')">Completed</button>
+      <button id="tabOffboard" class="tab-btn" onclick="switchTab('offboardTab')">Offboarding HR (Contract Cancelation)</button>
+      <button id="tabOffboardCompleted" class="tab-btn" onclick="switchTab('offboardCompletedTab')">Offboarding Completed</button>
+  </div>
+ 
+  <!-- HR stage -->
+<div id="hrTab" style="display:block;">
+  {% set hr_drivers = drivers | selectattr("onboarding_stage", "equalto", "HR") | list %}
+  {% if hr_drivers %}
+    <div class="driver-cards">
+      {% for driver in hr_drivers %}
+<div class="driver-card" data-driver='{{ {
+    "id": driver.id,
+    "full_name": driver.full_name | default(''),
+    "iqama_number": driver.iqama_number | default(''),
+    "iqama_expiry_date": (driver.iqama_expiry_date|string) | default(''),
+    "nationality": driver.nationality | default(''),
+    "mobile_number": driver.mobile_number | default(''),
+    "previous_sponsor_number": driver.previous_sponsor_number | default(''),
+    "saudi_driving_license": driver.saudi_driving_license | default(false),
+    "city": driver.city | default(''),
+    "platform": driver.platform | default(''),
+    "platform_id": driver.platform_id | default(''),
+    "car_details": driver.car_details | default(''),
+    "iqama_card_upload": driver.iqama_card_upload | default(''),
+    "qiwa_contract_created": driver.qiwa_contract_created | default(false),
+    "company_contract_created": driver.company_contract_created | default(false),
+    "qiwa_contract_status": driver.qiwa_contract_status | default(''),
+    "ops_manager_approved_at": (driver.ops_manager_approved_at|string) if driver.ops_manager_approved_at else "",
+    "finance_approved_at": (driver.finance_approved_at|string) if driver.finance_approved_at else "",
+    "tamm_authorized": driver.tamm_authorized | default(false),
+    "onboarding_stage": driver.onboarding_stage | default(''),
+    "transfer_fee_paid": driver.transfer_fee_paid | default(false),
+    "transfer_fee_amount": driver.transfer_fee_amount | default(''),
+    "transfer_fee_paid_at": (driver.transfer_fee_paid_at|string) if driver.transfer_fee_paid_at else ""
+} | tojson | safe }}'>
+
+          
+        <h3>{{ driver.full_name }}</h3>
+        <p><strong>Iqama:</strong> {{ driver.iqama_number }}</p>
+        <p class="muted"><strong>Iqama Expiry:</strong> {{ driver.iqama_expiry_date or 'N/A' }}</p>
+        <p class="muted"><strong>City:</strong> {{ driver.city or 'N/A' }}</p>
+        <p class="muted"><strong>Stage:</strong> HR</p>
+        <p class="muted"><strong>Previous Transfers:</strong> {{ driver.previous_sponsor_number or 0 }}</p>
+        
+        <div style="margin-top:8px;">
+          <button class="btn primary" onclick="openDriverModal(this)">Open</button>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p>No drivers are in HR stage.</p>
+  {% endif %}
+</div>
+
+
+
+  <!-- HR Final (Transfership) -->
+  <div id="finalTab" style="display:none;">
+    {% set final_drivers = drivers | selectattr("onboarding_stage", "equalto", "HR Final") | list %}
+    {% if final_drivers %}
+      <div class="driver-cards">
+        {% for driver in final_drivers %}
+        <div class="driver-card" data-driver='{{ {
+          "id": driver.id,
+          "full_name": driver.full_name | default(''),
+          "iqama_number": driver.iqama_number | default(''),
+          "city": driver.city | default(''),
+          "platform": driver.platform | default(''),
+          "sponsorship_transfer_status": driver.sponsorship_transfer_status | default(''),
+          "transfer_fee_paid": driver.transfer_fee_paid | default(false),
+          "transfer_fee_amount": driver.transfer_fee_amount | default(''),
+          "transfer_fee_paid_at": (driver.transfer_fee_paid_at|string) if driver.transfer_fee_paid_at else "",
+          "transfer_fee_receipt": driver.transfer_fee_receipt | default('')
+        } | tojson | safe }}'>
+          <h3>{{ driver.full_name }}</h3>
+          <p><strong>Iqama:</strong> {{ driver.iqama_number }}</p>
+          <p class="muted"><strong>City:</strong> {{ driver.city or 'N/A' }}</p>
+          <p class="muted"><strong>Transfer:</strong> {{ driver.sponsorship_transfer_status or 'Pending' }}</p>
+          <div style="margin-top:8px;">
+            <button class="btn primary" onclick="openTransferModal(this)">Update / Complete</button>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p>No drivers awaiting sponsorship transfer.</p>
+    {% endif %}
+  </div>
+
+  <!-- Completed -->
+  <div id="completedTab" style="display:none;">
+    {% set completed_drivers = drivers | selectattr("onboarding_stage", "equalto", "Completed") | list %}
+    {% if completed_drivers %}
+      <div class="search-box">
+        <input id="completedSearch" class="search-input" placeholder="Search completed drivers by name / iqama / platform..." oninput="filterCompleted()">
+      </div>
+      <div class="driver-cards" id="completedList">
+        {% for driver in completed_drivers %}
+        <div class="driver-card completed-card" onclick="openCompletedModal(this)" data-driver='{{ {
+        
+              "id": driver.id,
+              "full_name": driver.full_name | default(''),
+              "iqama_number": driver.iqama_number | default(''),
+              "iqama_expiry_date": (driver.iqama_expiry_date|string) if driver.iqama_expiry_date else "",
+              "nationality": driver.nationality | default(''),
+              "mobile_number": driver.mobile_number | default(''),
+              "previous_sponsor_number": driver.previous_sponsor_number | default(''),
+              "saudi_driving_license": driver.saudi_driving_license | default(false),
+              "city": driver.city | default(''),
+              "platform": driver.platform | default(''),
+              "platform_id": driver.platform_id | default(''),
+              "car_details": driver.car_details | default(''),
+              "assignment_date": driver.assignment_date|string if driver.assignment_date else "",
+              "issued_mobile_number": driver.issued_mobile_number | default(''),
+              "issued_device_id": driver.issued_device_id | default(''),
+              "mobile_issued": driver.mobile_issued | default(false),
+              "iqama_card_upload": driver.iqama_card_upload | default(''),
+              "qiwa_contract_created": driver.qiwa_contract_created | default(false),
+              "company_contract_created": driver.company_contract_created | default(false),
+              "qiwa_contract_status": driver.qiwa_contract_status | default(''),
+              "ops_manager_approved_at": (driver.ops_manager_approved_at|string) if driver.ops_manager_approved_at else "",
+              "ops_supervisor_approved_at": (driver.ops_supervisor_approved_at|string) if driver.ops_supervisor_approved_at else "",
+              "fleet_manager_approved_at": (driver.fleet_manager_approved_at|string) if driver.fleet_manager_approved_at else "",
+              "finance_approved_at": (driver.finance_approved_at|string) if driver.finance_approved_at else "",
+              "hr_approved_at": (driver.hr_approved_at|string) if driver.hr_approved_at else "",
+              "transfer_fee_paid": driver.transfer_fee_paid | default(false),
+              "transfer_fee_amount": driver.transfer_fee_amount | default(0),
+              "transfer_fee_paid_at": (driver.transfer_fee_paid_at|string) if driver.transfer_fee_paid_at else "",
+              "transfer_fee_receipt": driver.transfer_fee_receipt | default(''),
+              "sponsorship_transfer_proof": driver.sponsorship_transfer_proof | default(''),
+              "tamm_authorization_ss": driver.tamm_authorization_ss | default(''),
+              "tamm_authorized": driver.tamm_authorized | default(false),
+              "onboarding_stage": driver.onboarding_stage | default('')
+          } | tojson | safe }}'>
+
+          <h3>{{ driver.full_name }}</h3>
+          <p><strong>Iqama:</strong> {{ driver.iqama_number }}</p>
+          <p class="muted"><strong>Platform:</strong> {{ driver.platform or 'Unknown' }}</p>
+          <p class="muted"><strong>City:</strong> {{ driver.city or 'N/A' }}</p>
+        </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p>No completed drivers found.</p>
+    {% endif %}
+  </div>
+
+  <!-- Hr Offboarding -->
+  <!-- HR Offboarding Cards -->
+  <div id="offboardTab">
+    {% for o in offboarding_drivers if o.status != "Completed" %}
+    <div class="driver-card offboarding-card p-3 mb-2 border rounded" style="cursor:pointer;" 
+        data-driver-id="{{ o.driver_id }}" onclick="openOffboardingModal(this)">
+      <h4>{{ o.full_name }}</h4>
+      <p>Iqama: {{ o.iqama_number }}</p>
+      <p>Status: {{ o.status }} offboarding</p>
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- Offboarding Modal -->
+  <!-- HR Offboarding Modal -->
+<!-- HR Offboarding Modal -->
+<div class="modal fade" id="offboardingModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <form id="offboardingForm" method="POST" action="{{ url_for('hr.finalize_offboarding') }}">
+        <div class="modal-header">
+          <h5 class="modal-title" id="driverName">Driver Name</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" name="offboarding_id" id="offboardingId">
+
+          <!-- Company Contract -->
+          <div class="form-check mb-3">
+            <input class="form-check-input" type="checkbox" name="company_contract_cancelled" id="companyContractCancelled" value="yes">
+            <label class="form-check-label" for="companyContractCancelled">Company Contract Cancelled?</label>
+          </div>
+
+          <!-- Qiwa Contract -->
+          <div class="form-check mb-3">
+            <input class="form-check-input" type="checkbox" name="qiwa_contract_cancelled" id="qiwaContractCancelled" value="yes">
+            <label class="form-check-label" for="qiwaContractCancelled">Qiwa Contract Cancelled?</label>
+          </div>
+
+          <!-- Pending Salary -->
+          <div class="mb-3">
+            <label>Pending Salary</label>
+            <input type="number" step="0.01" class="form-control" name="pending_salary" id="pendingSalary" readonly>
+          </div>
+
+          <!-- Salary Paid -->
+          <div class="form-check mb-3">
+            <input class="form-check-input" type="checkbox" name="salary_paid" id="salaryPaid" value="yes">
+            <label class="form-check-label" for="salaryPaid">Salary Paid?</label>
+          </div>
+
+          <!-- HR Note -->
+          <div class="mb-3">
+            <label>HR Note</label>
+            <textarea class="form-control" name="hr_note" id="hrNote"></textarea>
+          </div>
+
+          <hr>
+          <h6>Finance Info (Read-only)</h6>
+          <textarea class="form-control" id="financeNote" readonly></textarea>
+
+          <h6>Fleet Info (Read-only)</h6>
+          <textarea class="form-control" id="fleetReport" readonly></textarea>
+          <input type="text" class="form-control" id="fleetCost" readonly>
+        </div>
+
+        <div class="modal-footer">
+          <!-- Optional: hidden submit button for normal POST -->
+          <button type="submit" class="btn btn-success d-none" id="hrSaveBtn">Clear & Send to Fleet for TAMM Cancelation</button>
+
+          <!-- AJAX Button -->
+          <button type="button" class="btn btn-primary" id="hrClearBtn" onclick="sendToFleet()">Clear & Send to Fleet for TAMM Cancelation</button>
+
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+function sendToFleet() {
+    const form = document.getElementById('offboardingForm');
+    const offboardingId = document.getElementById('offboardingId').value;
+    const company = document.getElementById('companyContractCancelled').checked ? 'yes' : 'no';
+    const qiwa = document.getElementById('qiwaContractCancelled').checked ? 'yes' : 'no';
+    const salary = document.getElementById('salaryPaid').checked ? 'yes' : 'no';
+    const hrNote = document.getElementById('hrNote').value;
+
+    fetch('{{ url_for("hr.finalize_offboarding") }}', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            offboarding_id: offboardingId,
+            company_contract_cancelled: company,
+            qiwa_contract_cancelled: qiwa,
+            salary_paid: salary,
+            hr_note: hrNote
+        })
+    })
+    .then(res => res.json())
+    .then(data => {
+        alert(data.message);
+        if(data.success) location.reload();
+    })
+    .catch(err => console.error(err));
+}
+</script>
+
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+  const offboardingData = JSON.parse('{{ offboarding_drivers | tojson | default("[]") | safe }}');
+
+function validateHrForm() {
+    const companyCancelled = document.getElementById("companyContractCancelled").checked;
+    const qiwaCancelled = document.getElementById("qiwaContractCancelled").checked;
+    const salaryPaid = document.getElementById("salaryPaid").checked;
+
+    const allYes = companyCancelled && qiwaCancelled && salaryPaid;
+
+    document.getElementById("hrSaveBtn").disabled = !allYes;
+    document.getElementById("hrClearBtn").disabled = !allYes;
+
+    return allYes;
+}
+
+// Attach event listeners
+["companyContractCancelled", "qiwaContractCancelled", "salaryPaid"].forEach(id => {
+  document.getElementById(id).addEventListener("change", validateHrForm);
+});
+
+// Prevent form submit if not valid
+document.getElementById("offboardingForm").addEventListener("submit", function(e) {
+  if (!validateHrForm()) {
+    e.preventDefault();
+    alert("You cannot proceed until Company Contract, Qiwa Contract, and Salary Paid are all YES.");
+  }
+});
+
+function openOffboardingModal(cardEl) {
+    const driverId = Number(cardEl.dataset.driverId);
+    const offboarding = offboardingData.find(o => o.driver_id === driverId);
+    if (!offboarding) {
+        showToast('Offboarding data not found', 'error');
+        return;
+    }
+
+    // Populate modal fields
+    document.getElementById('driverName').innerText = offboarding.full_name;
+    document.getElementById('offboardingId').value = offboarding.offboarding_id;
+    document.getElementById('companyContractCancelled').value = offboarding.company_contract_cancelled ? "yes" : "no";
+    document.getElementById('qiwaContractCancelled').value = offboarding.qiwa_contract_cancelled ? "yes" : "no";
+    document.getElementById('pendingSalary').value = offboarding.pending_salary || 0;
+    document.getElementById('hrNote').value = offboarding.hr_note || "";
+    document.getElementById('financeNote').value = offboarding.finance_note || "";
+    document.getElementById('fleetReport').value = offboarding.fleet_damage_report || "";
+    document.getElementById('fleetCost').value = offboarding.fleet_damage_cost || 0;
+    document.getElementById('salaryPaid').value = offboarding.salary_paid ? "yes" : "no";
+
+    const hrClearBtn = document.getElementById('hrClearBtn');
+
+    // Enable button only if all conditions met
+    const canClear = offboarding.company_contract_cancelled && offboarding.qiwa_contract_cancelled && offboarding.salary_paid;
+    hrClearBtn.disabled = !canClear;
+
+    // Show modal using Bootstrap API
+    const modal = new bootstrap.Modal(document.getElementById('offboardingModal'));
+    modal.show();
+}
+
+
+
+  </script>
+
+
+    <!-- Offboarding Completed -->
+<div id="offboardCompletedTab" style="display:none;">
+  <h4>Completed Offboarding</h4>
+  <div class="search-box">
+      <input id="offboardCompletedSearch" class="search-input" placeholder="Search completed offboarding drivers..." oninput="filterOffboardCompleted()">
+  </div>
+  <div class="driver-cards" id="offboardCompletedList">
+      {% for o in offboarding_drivers if o.status == "Completed" %}
+        <div class="driver-card completed-card" onclick="openOffboardCompletedModal(this)" 
+            data-driver='{{ {
+                "id": o.driver_id or 0,
+                "full_name": o.full_name or "",
+                "iqama_number": o.iqama_number or "",
+                "pending_salary": o.pending_salary or 0,
+                "hr_note": o.hr_note or "",
+                "finance_note": o.finance_note or "",
+                "fleet_report": o.fleet_damage_report or "",
+                "fleet_cost": o.fleet_damage_cost or 0,
+                "hr_cleared": o.hr_cleared | default(false),
+                "ops_supervisor_cleared": o.ops_supervisor_cleared | default(false),
+                "fleet_cleared": o.fleet_cleared | default(false),
+                "finance_cleared": o.finance_cleared | default(false),
+                "tamm_revoked": o.tamm_revoked | default(false),
+                "company_contract_cancelled": o.company_contract_cancelled,
+                "qiwa_contract_cancelled": o.qiwa_contract_cancelled,
+                "salary_paid": o.salary_paid ,
+                "tamm_authorization_ss": o.tamm_authorization_ss or ""
+            } | tojson | safe }}'>
+          <h3>{{ o.full_name or "N/A" }}</h3>
+          <p><strong>Iqama:</strong> {{ o.iqama_number or "N/A" }}</p>
+          <p class="muted"><strong>Status:</strong> Completed</p>
+        </div>
+      {% endfor %}
+  </div>
+</div>
+
+
+<div id="offboardCompletedModal" class="modal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3>Completed Offboarding Details</h3>
+      <button class="close" onclick="closeModal('offboardCompletedModal')">&times;</button>
+    </div>
+    <div id="offboardCompletedDetails"></div>
+  </div>
+</div>
+  
+    <!-- HR Modal (approve/send to Ops Supervisor) -->
+    <div id="hrModal" class="modal" aria-hidden="true">
+      <div class="modal-content" role="dialog" aria-modal="true">
+        <div class="modal-header">
+          <h3>HR Processing</h3>
+          <button class="close" onclick="closeModal('hrModal')">&times;</button>
+        </div>
+
+        <div id="hrDetails"></div>
+
+        <form id="hrForm" method="POST" enctype="multipart/form-data">
+          <div class="grid-2">
+            <div>
+              <label><input type="checkbox" id="company_contract_created" name="company_contract_created"> Company contract created</label>
+              <label><input type="checkbox" id="qiwa_contract_created" name="qiwa_contract_created"> Qiwa contract created</label>
+            </div>
+            <div>
+              <label>Qiwa contract status</label>
+              <select id="qiwa_contract_status" name="qiwa_contract_status">
+                <option value="Pending">Pending</option>
+                <option value="Approved">Approved</option>
+                <option value="Not Approved">Not Approved</option>
+              </select>
+              <div class="muted" style="margin-top:6px;">All three checks must be satisfied to send to Ops Supervisor.</div>
+            </div>
+          </div>
+
+          <div style="margin-top:12px; text-align:right;">
+            <button type="button" class="btn ghost" onclick="closeModal('hrModal')">Cancel</button>
+            <button id="hrSubmit" type="submit" class="btn success" disabled>✅ Send to Ops Supervisor</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Transfer Modal (HR Final) -->
+    <div id="transferModal" class="modal" aria-hidden="true">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>Complete Sponsorship Transfer</h3>
+          <button class="close" onclick="closeModal('transferModal')">&times;</button>
+        </div>
+
+        <div id="transferDetails"></div>
+
+        <form id="transferForm" method="POST" enctype="multipart/form-data">
+          <label>Sponsorship transfer status</label>
+          <select id="transfer_status" name="sponsorship_transfer_status" required>
+            <option value="Pending">Pending</option>
+            <option value="Transferred">Transferred</option>
+          </select>
+
+          <label style="margin-top:8px;">Upload transfer proof (required when status = Transferred)</label>
+          <input id="transfer_proof" type="file" name="sponsorship_transfer_proof" accept=".jpg,.jpeg,.png,.pdf">
+
+          <div style="margin-top:12px; text-align:right;">
+            <button type="button" class="btn ghost" onclick="closeModal('transferModal')">Cancel</button>
+            <button id="transferSubmit" type="submit" class="btn success" disabled>✅ Mark as Completed</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Completed Driver Modal -->
+    <div id="completedModal" class="modal" aria-hidden="true">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>Completed Driver Details</h3>
+          <button class="close" onclick="closeModal('completedModal')">&times;</button>
+        </div>
+
+        <div id="completedDetails"></div>
+      </div>
+    </div>
+
+    <!-- Change password modal -->
+    <div id="passwordModal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>Change Password</h3>
+          <button class="close" onclick="closeModal('passwordModal')">&times;</button>
+        </div>
+        <form method="POST" action="{{ url_for('hr.change_password') }}">
+          <label>Current password</label>
+          <input type="password" name="current_password" required>
+          <label>New password</label>
+          <input type="password" name="new_password" required>
+          <label>Confirm new password</label>
+          <input type="password" name="confirm_password" required>
+          <div style="text-align:right; margin-top:10px;">
+            <button type="button" class="btn ghost" onclick="closeModal('passwordModal')">Cancel</button>
+            <button type="submit" class="btn success">Update Password</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- toast container -->
+    <div class="toast-container" id="toastContainer"></div>
+    <!-- Hidden container for flashed messages -->
+    <div id="flashedData" style="display:none;">
+      {{ get_flashed_messages(with_categories=true) | list | tojson | safe }}
+    </div>
+  </div>  
+
+  <script>
+    // Simple helpers
+    function switchTab(tabId) {
+      ['hrTab','finalTab','completedTab','offboardTab','offboardCompletedTab']
+        .forEach(id => document.getElementById(id).style.display = (id === tabId) ? 'block' : 'none');
+
+      document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+      if(tabId === 'hrTab') document.getElementById('tabHr').classList.add('active');
+      if(tabId === 'finalTab') document.getElementById('tabFinal').classList.add('active');
+      if(tabId === 'completedTab') document.getElementById('tabCompleted').classList.add('active');
+      if(tabId === 'offboardTab') document.getElementById('tabOffboard').classList.add('active');
+      if(tabId === 'offboardCompletedTab') document.getElementById('tabOffboardCompleted').classList.add('active');
+    }
+    function openModal(id){ document.getElementById(id).classList.add('show'); }
+    function closeModal(id){ document.getElementById(id).classList.remove('show'); }
+
+    // Safely get driver object (accepts a button or card)
+    function readDriverFromElement(el){
+      let card = el;
+      if(!card) return null;
+      if(!card.dataset || !card.dataset.driver) {
+        card = el.closest && el.closest('.driver-card');
+      }
+      if(!card || !card.dataset || !card.dataset.driver) return null;
+      try { return JSON.parse(card.dataset.driver); } catch(e){ console.error('parse driver json', e); return null; }
+    }
+
+    /* -------------- HR modal (approve/send to Ops Supervisor) -------------- */
+    const hrForm = document.getElementById('hrForm');
+    const hrSubmit = document.getElementById('hrSubmit');
+    const companyInput = document.getElementById('company_contract_created');
+    const qiwaInput = document.getElementById('qiwa_contract_created');
+    const qiwaStatus = document.getElementById('qiwa_contract_status');
+
+    function validateHrForm() {
+      const ok = companyInput.checked && qiwaInput.checked && qiwaStatus.value === 'Approved';
+      hrSubmit.disabled = !ok;
+    }
+    companyInput && companyInput.addEventListener('change', validateHrForm);
+    qiwaInput && qiwaInput.addEventListener('change', validateHrForm);
+    qiwaStatus && qiwaStatus.addEventListener('change', validateHrForm);
+
+function openDriverModal(btn){
+    const d = readDriverFromElement(btn);
+    if(!d){ showToast('Driver data missing', 'error'); return; }
+
+    let html = '<div style="display:flex;gap:16px;flex-direction:column;">';
+
+    // Driver basic info
+    html += '<div style="display:flex;gap:16px;flex-wrap:wrap;">';
+    html += `<div style="flex:1">
+                <h3>${escapeHtml(d.full_name || '')}</h3>
+                <p><strong>Iqama:</strong> ${escapeHtml(d.iqama_number || '')}</p>
+                <p><strong>Iqama expiry:</strong> ${escapeHtml(d.iqama_expiry_date || '')}</p>
+                <p><strong>Nationality:</strong> ${escapeHtml(d.nationality || '')}</p>
+                <p><strong>Mobile:</strong> ${escapeHtml(d.mobile_number || '')}</p>
+                <p><strong>Previous Transfers:</strong> ${escapeHtml(d.previous_sponsor_number || '')}</p>
+                <p><strong>City:</strong> ${escapeHtml(d.city || '')}</p>
+                <p><strong>Platform:</strong> ${escapeHtml(d.platform || '')}</p>
+                <p><strong>Platform ID:</strong> ${escapeHtml(d.platform_id || '')}</p>
+                <p><strong>Car Details:</strong> ${escapeHtml(d.car_details || '')}</p>
+                <p><strong>TAMM authorized:</strong> ${d.tamm_authorized ? '✅ Yes' : '❌ No'}</p>
+              </div>`;
+    html += '</div>';
+
+    // Images
+    if(d.iqama_card_upload || d.tamm_authorization_ss || d.transfer_fee_receipt){
+      html += '<div class="image-row">';
+      if(d.iqama_card_upload){
+        html += `<div><label class="small">Iqama card</label><br><img src="/static/uploads/${encodeURIComponent(d.iqama_card_upload)}" alt="iqama"></div>`;
+      }
+      if(d.tamm_authorization_ss){
+        html += `<div><label class="small">TAMM Screenshot</label><br><img src="/static/uploads/${encodeURIComponent(d.tamm_authorization_ss)}" alt="tamm"></div>`;
+      }
+      if(d.transfer_fee_receipt){
+        html += `<div><label class="small">Transfer proof</label><br><a href="/static/uploads/${encodeURIComponent(d.transfer_fee_receipt)}" target="_blank"><img src="/static/uploads/${encodeURIComponent(d.transfer_fee_receipt)}" alt="receipt"></a></div>`;
+      }
+      html += '</div>';
+    }
+
+    // Approvals & transfers
+    html += '<hr><div class="grid-2">';
+    html += `<div>
+                <p><strong>Ops Manager Approved:</strong> ${escapeHtml(d.ops_manager_approved_at || 'Pending')}</p>
+                <p><strong>HR Approved:</strong> ${escapeHtml(d.hr_approved_at || 'Pending')}</p>
+                <p><strong>Ops Supervisor Approved:</strong> ${escapeHtml(d.ops_supervisor_approved_at || 'Pending')}</p>
+             </div>`;
+    html += `<div>
+                <p><strong>Fleet Manager Approved:</strong> ${escapeHtml(d.fleet_manager_approved_at || 'Pending')}</p>
+                <p><strong>Finance Approved:</strong> ${escapeHtml(d.finance_approved_at || 'Pending')}</p>
+             </div></div>`;
+
+    html += '<hr>';
+    html += `<p><strong>Transfer Fee Paid:</strong> ${d.transfer_fee_paid ? '✅ Yes' : '❌ No'}</p>`;
+    html += `<p><strong>Transfer Fee Amount:</strong> ${escapeHtml(d.transfer_fee_amount || '')}</p>`;
+    html += `<p><strong>Transfer Fee Paid At:</strong> ${escapeHtml(d.transfer_fee_paid_at || '')}</p>`;
+
+    // Inject into modal and open
+    document.getElementById('hrDetails').innerHTML = html;
+
+    // Prefill HR form (existing logic)
+    companyInput.checked = !!d.company_contract_created;
+    qiwaInput.checked = !!d.qiwa_contract_created;
+    qiwaStatus.value = d.qiwa_contract_status || 'Pending';
+
+    hrForm.action = `/dashboard/hr/approve_driver/${d.id}`;
+    validateHrForm();
+    openModal('hrModal');
+}
+
+    // Handle HR form submit (regular post, server will redirect)
+    // no special client AJAX here; let server handle.
+
+    /* -------------- Transfer modal (HR final stage) -------------- */
+    const transferForm = document.getElementById('transferForm');
+    const transferStatus = document.getElementById('transfer_status');
+    const transferProof = document.getElementById('transfer_proof');
+    const transferSubmit = document.getElementById('transferSubmit');
+
+    function validateTransfer() {
+      // require status 'Transferred' AND a file selected to enable submit (per request)
+      const ok = (transferStatus.value === 'Transferred') && (transferProof.files && transferProof.files.length > 0);
+      transferSubmit.disabled = !ok;
+    }
+    transferStatus && transferStatus.addEventListener('change', validateTransfer);
+    transferProof && transferProof.addEventListener('change', validateTransfer);
+
+    function openTransferModal(btn){
+      const d = readDriverFromElement(btn);
+      if(!d){ showToast('Driver data missing', 'error'); return; }
+      let html = `<p><strong>Name:</strong> ${escapeHtml(d.full_name)}</p>
+                  <p><strong>Iqama:</strong> ${escapeHtml(d.iqama_number || 'N/A')}</p>
+                  <p class="muted"><strong>Current transfer status:</strong> ${escapeHtml(d.sponsorship_transfer_status || 'Pending')}</p>
+                  <p class="muted"><strong>Transfer fee paid:</strong> ${d.transfer_fee_paid ? 'Yes' : 'No'}</p>
+                  <p class="muted"><strong>Transfer fee amount:</strong> ${escapeHtml(d.transfer_fee_amount || 'N/A')}</p>`;
+      document.getElementById('transferDetails').innerHTML = html;
+      transferStatus.value = d.sponsorship_transfer_status || 'Pending';
+      transferProof.value = '';
+      transferForm.action = `/dashboard/hr/complete_transfer/${d.id}`;
+      validateTransfer();
+      openModal('transferModal');
+    }
+
+    /* -------------- Completed driver modal -------------- */
+  
+  function openCompletedModal(cardEl){
+  const d = readDriverFromElement(cardEl);
+  if(!d){ showToast('Driver data missing', 'error'); return; }
+
+  let html = '<div style="display:flex;gap:16px;flex-direction:column;">';
+  html += '<div style="display:flex;gap:16px;flex-wrap:wrap;">';
+  html += `<div style="flex:1"><h3>${escapeHtml(d.full_name || '')}</h3>`;
+  html += `<p><strong>Iqama:</strong> ${escapeHtml(d.iqama_number || '')}</p>`;
+  html += `<p><strong>Iqama expiry:</strong> ${escapeHtml(d.iqama_expiry_date || '')}</p>`;
+  html += `<p><strong>Nationality:</strong> ${escapeHtml(d.nationality || '')}</p>`;
+  html += `<p><strong>Mobile:</strong> ${escapeHtml(d.mobile_number || '')}</p>`;
+  html += `<p><strong>Prev sponsor:</strong> ${escapeHtml(d.previous_sponsor_number || '')}</p>`;
+  html += `<p><strong>Platform:</strong> ${escapeHtml(d.platform || '')}</p>`;
+  html += `<p><strong>Platform ID:</strong> ${escapeHtml(d.platform_id || '')}</p>`;
+  html += `<p><strong>Issued Mobile:</strong> ${escapeHtml(d.issued_mobile_number || '')}</p>`;
+  html += `<p><strong>Issued Device ID:</strong> ${escapeHtml(d.issued_device_id || '')}</p>`;
+  html += `<p><strong>Mobile issued:</strong> ${d.mobile_issued ? '✅ Yes' : '❌ No'}</p>`;
+  html += `<p><strong>Car Details:</strong> ${escapeHtml(d.car_details || '')}</p>`;
+  html += `<p><strong>Assignment date:</strong> ${escapeHtml(d.assignment_date || '')}</p>`;
+  html += `<p><strong>TAMM authorized:</strong> ${d.tamm_authorized ? '✅ Yes' : '❌ No'}</p>`;
+  html += `</div></div>`;
+
+  // images
+  if(d.iqama_card_upload || d.tamm_authorization_ss || d.transfer_fee_receipt){
+    html += '<div class="image-row">';
+    if(d.iqama_card_upload){
+      html += `<div><label class="small">Iqama card</label><br><img src="/static/uploads/${encodeURIComponent(d.iqama_card_upload)}" alt="iqama"></div>`;
+    }
+    if(d.tamm_authorization_ss){
+      html += `<div><label class="small">TAMM screenshot</label><br><img src="/static/uploads/${encodeURIComponent(d.tamm_authorization_ss)}" alt="tamm"></div>`;
+    }
+    if(d.transfer_fee_receipt){
+      html += `<div><label class="small">Transfer proof</label><br><a href="/static/uploads/${encodeURIComponent(d.transfer_fee_receipt)}" target="_blank"><img src="/static/uploads/${encodeURIComponent(d.transfer_fee_receipt)}" alt="receipt"></a></div>`;
+    }
+    if (d.sponsorship_transfer_proof) {
+      html += `<div><label class="small">Sponsorship Transfer Proof</label><br><a href="/static/uploads/${encodeURIComponent(d.sponsorship_transfer_proof)}" target="_blank"><img src="/static/uploads/${encodeURIComponent(d.sponsorship_transfer_proof)}" alt="transfer-proof"></a></div>`;
+    }
+    html += '</div>';
+  }
+
+  // approvals & transfer fee
+  html += '<hr>';
+  html += '<div class="grid-2">';
+  html += `<div><p><strong>Ops manager approved:</strong> ${escapeHtml(d.ops_manager_approved_at || 'Pending')}</p>
+                <p><strong>HR approved:</strong> ${escapeHtml(d.hr_approved_at || 'Pending')}</p>
+                <p><strong>Ops supervisor approved:</strong> ${escapeHtml(d.ops_supervisor_approved_at || 'Pending')}</p></div>`;
+  html += `<div><p><strong>Fleet manager approved:</strong> ${escapeHtml(d.fleet_manager_approved_at || 'Pending')}</p>
+                <p><strong>Finance approved:</strong> ${escapeHtml(d.finance_approved_at || 'Pending')}</p></div>`;
+  html += '</div>';
+
+  html += '<hr>';
+  html += `<p><strong>Transfer fee paid:</strong> ${d.transfer_fee_paid ? '✅ Yes' : '❌ No'}</p>`;
+  html += `<p><strong>Amount:</strong> ${escapeHtml(d.transfer_fee_amount || '')}</p>`;
+  html += `<p><strong>Paid at:</strong> ${escapeHtml(d.transfer_fee_paid_at || '')}</p>`;
+
+  html += '</div>';
+
+  // Put content into correct modal container
+  document.getElementById('completedDetails').innerHTML = html;
+  openModal('completedModal');  // <-- NOW THE MODAL WILL SHOW
+}
+
+  
+  
+  
+  /* -------------- Completed search -------------- */
+    function filterCompleted(){
+      const q = (document.getElementById('completedSearch').value || '').toLowerCase().trim();
+      document.querySelectorAll('.completed-card').forEach(card => {
+        const text = card.innerText.toLowerCase();
+        card.style.display = text.includes(q) ? '' : 'none';
+      });
+    }
+
+    /* -------------- small utilities -------------- */
+    function escapeHtml(s){
+      if(s === null || s === undefined) return '';
+      return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+                       .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+    }
+
+    // Generic click outside & escape handling to close modals
+    window.addEventListener('click', function(e){
+      if(e.target.classList && e.target.classList.contains('modal')) {
+        e.target.classList.remove('show');
+      }
+    });
+    window.addEventListener('keydown', function(e){
+      if(e.key === 'Escape') {
+        document.querySelectorAll('.modal.show').forEach(m => m.classList.remove('show'));
+      }
+    });
+
+    /* -------------- Toast + flash messages -------------- */
+    function showToast(msg, type='success'){
+      const container = document.getElementById('toastContainer');
+      const t = document.createElement('div');
+      t.className = 'toast ' + (type === 'error' ? 'error' : 'success');
+      t.innerText = msg;
+      container.appendChild(t);
+      setTimeout(()=> t.classList.add('show'), 20);
+      setTimeout(()=> { t.classList.remove('show'); setTimeout(()=> t.remove(), 400); }, 3500);
+    }
+    // Show flashed messages from server (injected as JSON in a hidden div)
+
+(function showFlashed() {
+      let flashed = [];
+      const el = document.getElementById('flashedData');
+      if (!el) return;
+
+      try {
+        flashed = JSON.parse(el.textContent || '[]');
+      } catch (err) {
+        console.warn('Could not parse flashed messages JSON:', err);
+        flashed = [];
+      }
+
+      if (!Array.isArray(flashed) || flashed.length === 0) return;
+
+      flashed.forEach(item => {
+        const category = Array.isArray(item) ? item[0] : 'info';
+        const message = Array.isArray(item) ? item[1] : String(item);
+        const type = (category === 'success') ? 'success'
+                    : (category === 'danger' || category === 'error') ? 'error'
+                    : 'info';
+        showToast(message, type);
+      });
+    })();
+  
+  function openOffboardCompletedModal(cardEl) {
+  const d = JSON.parse(cardEl.dataset.driver || '{}');
+  if(!d){ showToast('Driver data missing', 'error'); return; }
+
+  let html = `<p><strong>Name:</strong> ${escapeHtml(d.full_name)}</p>
+              <p><strong>Iqama:</strong> ${escapeHtml(d.iqama_number)}</p>
+              <p><strong>Pending Salary:</strong> ${escapeHtml(d.pending_salary || 0)}</p>
+              <p><strong>HR Note:</strong> ${escapeHtml(d.hr_note || '')}</p>
+              <p><strong>Finance Info:</strong> ${escapeHtml(d.finance_note || '')}</p>
+              <p><strong>Fleet Report:</strong> ${escapeHtml(d.fleet_report || '')}</p>
+              <p><strong>Fleet Cost:</strong> ${escapeHtml(d.fleet_cost || 0)}</p>
+              <p><strong>Company Contract Cancelled:</strong> ${d.company_contract_cancelled ? '✅ Yes' : '❌ No'}</p>
+              <p><strong>Qiwa Contract Cancelled:</strong> ${d.qiwa_contract_cancelled ? '✅ Yes' : '❌ No'}</p>
+              <p><strong>Salary Paid:</strong> ${d.salary_paid ? '✅ Yes' : '❌ No'}</p>`;
+
+  if(d.tamm_authorization_ss){
+    html += `<div class="image-row"><div>
+               <label class="small">TAMM Screenshot</label><br>
+               <img src="/static/uploads/${encodeURIComponent(d.tamm_authorization_ss)}" alt="tamm">
+             </div></div>`;
+  }
+
+  document.getElementById('offboardCompletedDetails').innerHTML = html;
+  openModal('offboardCompletedModal');
+}
+
+// Filter search
+function filterOffboardCompleted() {
+  const q = (document.getElementById('offboardCompletedSearch').value || '').toLowerCase().trim();
+  document.querySelectorAll('#offboardCompletedList .completed-card').forEach(card => {
+    const text = card.innerText.toLowerCase();
+    card.style.display = text.includes(q) ? '' : 'none';
+  });
+}
+
+
+  </script>
+</body>
+</html>
